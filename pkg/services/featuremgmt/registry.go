@@ -399,6 +399,14 @@ var (
 			Expression:      "false",
 		},
 		{
+			Name:            "alertingRuleChains",
+			Description:     "Enables RuleChain resources for Kubernetes alerting rules",
+			Stage:           FeatureStageExperimental,
+			Owner:           grafanaAlertingSquad,
+			RequiresRestart: true,
+			Expression:      "false",
+		},
+		{
 			Name:            "kubernetesCorrelations",
 			Description:     "Adds support for Kubernetes correlations",
 			Stage:           FeatureStageExperimental,

@@ -155,6 +155,10 @@ const (
 	// Adds support for Kubernetes alerting and recording rules
 	FlagKubernetesAlertingRules = "kubernetesAlertingRules"
 
+	// FlagAlertingRuleChains
+	// Enables RuleChain resources for Kubernetes alerting rules
+	FlagAlertingRuleChains = "alertingRuleChains"
+
 	// FlagKubernetesCorrelations
 	// Adds support for Kubernetes correlations
 	FlagKubernetesCorrelations = "kubernetesCorrelations"

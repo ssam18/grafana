@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"context"
+	"net/mail"
 	"net/url"
 	"testing"
 
@@ -183,6 +184,50 @@ func TestEmailNotifierIntegration(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestEmailNotifierAngleBracketAddress tests that email addresses with angle brackets
+// (e.g., "<example@email.com>") are passed through the pipeline correctly and that
+// gomail will strip the brackets when sending to the SMTP server.
+func TestEmailNotifierAngleBracketAddress(t *testing.T) {
+	ns := createEmailSender(t)
+
+	emailTmpl := alertingTemplates.ForTests(t)
+	externalURL, err := url.Parse("http://localhost/base")
+	require.NoError(t, err)
+	emailTmpl.ExternalURL = externalURL
+
+	// Create notifier with angle-bracketed email address
+	emailNotifier := alertingEmail.New(alertingEmail.Config{
+		SingleEmail: true,
+		Addresses:   []string{"<example@email.com>"},
+		Message:     "",
+		Subject:     alertingTemplates.DefaultMessageTitleEmbed,
+	}, receivers.Metadata{}, emailTmpl, ns, &alertingImages.UnavailableProvider{}, &logtest.Fake{})
+
+	alerts := []*types.Alert{
+		{
+			Alert: model.Alert{
+				Labels: model.LabelSet{"alertname": "TestAlert"},
+			},
+		},
+	}
+
+	ok, err := emailNotifier.Notify(context.Background(), alerts...)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	sentMsg := getSingleSentMessage(t, ns)
+	require.NotNil(t, sentMsg)
+
+	// The address with angle brackets is passed through the pipeline
+	require.Equal(t, []string{"<example@email.com>"}, sentMsg.To)
+
+	// Verify that gomail (via net/mail) will correctly parse and strip the brackets
+	// when sending the RCPT TO command to the SMTP server
+	parsed, err := mail.ParseAddress(sentMsg.To[0])
+	require.NoError(t, err)
+	require.Equal(t, "example@email.com", parsed.Address, "gomail will send to the stripped address")
 }
 
 func createSut(t *testing.T, messageTmpl string, subjectTmpl string, emailTmpl *alertingTemplates.Template, ns receivers.EmailSender) *alertingEmail.Notifier {

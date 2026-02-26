@@ -264,6 +264,11 @@ export interface FeatureToggles {
   */
   kubernetesAlertingRules?: boolean;
   /**
+  * Enables RuleChain resources for Kubernetes alerting rules
+  * @default false
+  */
+  alertingRuleChains?: boolean;
+  /**
   * Adds support for Kubernetes correlations
   * @default false
   */

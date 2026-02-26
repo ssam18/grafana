@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/grafana/apps/alerting/rules/pkg/app/alertrule"
 	"github.com/grafana/grafana/apps/alerting/rules/pkg/app/config"
 	"github.com/grafana/grafana/apps/alerting/rules/pkg/app/recordingrule"
+	"github.com/grafana/grafana/apps/alerting/rules/pkg/app/rulechain"
 )
 
 func New(cfg app.Config) (app.App, error) {
@@ -64,6 +65,11 @@ func buildKindValidator(kind resource.Kind, cfg config.RuntimeConfig) *simple.Va
 		return alertrule.NewValidator(cfg)
 	case "RecordingRule":
 		return recordingrule.NewValidator(cfg)
+	case "RuleChain":
+		if cfg.EnableRuleChains {
+			return rulechain.NewValidator(cfg)
+		}
+		return &simple.Validator{}
 	}
 	return nil
 }
@@ -74,6 +80,11 @@ func buildKindMutator(kind resource.Kind, cfg config.RuntimeConfig) *simple.Muta
 		return alertrule.NewMutator(cfg)
 	case "RecordingRule":
 		return recordingrule.NewMutator(cfg)
+	case "RuleChain":
+		if cfg.EnableRuleChains {
+			return rulechain.NewMutator(cfg)
+		}
+		return &simple.Mutator{}
 	}
 	return nil
 }

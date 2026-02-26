@@ -652,6 +652,20 @@
     },
     {
       "metadata": {
+        "name": "alertingRuleChains",
+        "resourceVersion": "1774638422908",
+        "creationTimestamp": "2026-03-27T19:07:02Z"
+      },
+      "spec": {
+        "description": "Enables RuleChain resources for Kubernetes alerting rules",
+        "stage": "experimental",
+        "codeowner": "@grafana/alerting-squad",
+        "requiresRestart": true,
+        "expression": "false"
+      }
+    },
+    {
+      "metadata": {
         "name": "alertingRuleGroupSortByFolderFullpath",
         "resourceVersion": "1770763646748",
         "creationTimestamp": "2026-02-10T22:47:26Z"

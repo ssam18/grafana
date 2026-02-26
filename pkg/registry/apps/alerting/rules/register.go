@@ -2,7 +2,12 @@ package rules
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 
+	"github.com/open-feature/go-sdk/openfeature"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	restclient "k8s.io/client-go/rest"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -10,9 +15,11 @@ import (
 
 	"github.com/grafana/grafana-app-sdk/app"
 	appsdkapiserver "github.com/grafana/grafana-app-sdk/k8s/apiserver"
+	"github.com/grafana/grafana-app-sdk/resource"
 	"github.com/grafana/grafana-app-sdk/simple"
 
 	"github.com/grafana/grafana/apps/alerting/rules/pkg/apis"
+	alertingv0alpha1 "github.com/grafana/grafana/apps/alerting/rules/pkg/apis/alerting/v0alpha1"
 	rulesApp "github.com/grafana/grafana/apps/alerting/rules/pkg/app"
 	rulesAppConfig "github.com/grafana/grafana/apps/alerting/rules/pkg/app/config"
 	"github.com/grafana/grafana/pkg/apimachinery/identity"
@@ -20,8 +27,10 @@ import (
 	"github.com/grafana/grafana/pkg/infra/log"
 	"github.com/grafana/grafana/pkg/registry/apps/alerting/rules/alertrule"
 	"github.com/grafana/grafana/pkg/registry/apps/alerting/rules/recordingrule"
+	"github.com/grafana/grafana/pkg/registry/apps/alerting/rules/rulechain"
 	"github.com/grafana/grafana/pkg/services/apiserver/appinstaller"
 	reqns "github.com/grafana/grafana/pkg/services/apiserver/endpoints/request"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/ngalert"
 	ngmodels "github.com/grafana/grafana/pkg/services/ngalert/models"
 	"github.com/grafana/grafana/pkg/services/ngalert/notifier"
@@ -43,6 +52,7 @@ type AppInstaller struct {
 func RegisterAppInstaller(
 	cfg *setting.Cfg,
 	ng *ngalert.AlertNG,
+	clientGenerator resource.ClientGenerator,
 ) (*AppInstaller, error) {
 	if ng.IsDisabled() {
 		log.New("app-registry").Info("Skipping Kubernetes Alerting Rules apiserver (rules.alerting.grafana.app): Unified Alerting is disabled")
@@ -52,6 +62,115 @@ func RegisterAppInstaller(
 	installer := &AppInstaller{
 		cfg: cfg,
 		ng:  ng,
+	}
+
+	featureClient := openfeature.NewDefaultClient()
+	namespacer := reqns.GetNamespaceMapper(cfg)
+	enableRuleChains := featureClient.Boolean(
+		context.Background(),
+		featuremgmt.FlagAlertingRuleChains,
+		false,
+		openfeature.TransactionContext(context.Background()),
+	)
+
+	// The clientGenerator blocks until the apiserver is ready, so calling it
+	// during registration would deadlock. Create the client lazily on first
+	// admission request via sync.Once.
+	var (
+		ruleChainClient     *alertingv0alpha1.RuleChainClient
+		ruleChainClientOnce sync.Once
+		ruleChainClientErr  error
+	)
+	getRuleChainClient := func() (*alertingv0alpha1.RuleChainClient, error) {
+		ruleChainClientOnce.Do(func() {
+			ruleChainClient, ruleChainClientErr = alertingv0alpha1.NewRuleChainClientFromGenerator(clientGenerator)
+		})
+		return ruleChainClient, ruleChainClientErr
+	}
+
+	resolveNamespace := func(ctx context.Context) (string, error) {
+		namespace := request.NamespaceValue(ctx)
+		if namespace != "" {
+			return namespace, nil
+		}
+		orgID, err := reqns.OrgIDForList(ctx)
+		if err == nil && orgID > 0 {
+			return namespacer(orgID), nil
+		}
+		if user, _ := identity.GetRequester(ctx); user != nil && user.GetOrgID() > 0 {
+			return namespacer(user.GetOrgID()), nil
+		}
+		return "", errors.New("could not resolve namespace")
+	}
+
+	// Used by RuleChain CREATE/UPDATE admission validation so all referenced rule UIDs
+	// are checked with a single RuleChain list/scan.
+	//
+	// TODO: This performs an O(N) full list of all RuleChains and scans every ref.
+	// It also has a TOCTOU race: another concurrent admission could assign the same
+	// UID between our list and the final persist. At low chain/rule counts this is
+	// acceptable. Consider adding optimistic locking, a label-based index, or an
+	// informer cache in PR 2 / future work to make membership lookups O(1).
+	resolveRuleChainMemberships := func(ctx context.Context, uids []string) (map[string]rulesAppConfig.RuleChainMembership, error) {
+		memberships := make(map[string]rulesAppConfig.RuleChainMembership, len(uids))
+		if !enableRuleChains || len(uids) == 0 {
+			for _, uid := range uids {
+				memberships[uid] = rulesAppConfig.RuleChainMembership{}
+			}
+			return memberships, nil
+		}
+
+		namespace, err := resolveNamespace(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		targets := make(map[string]struct{}, len(uids))
+		for _, uid := range uids {
+			if uid == "" {
+				continue
+			}
+			targets[uid] = struct{}{}
+			memberships[uid] = rulesAppConfig.RuleChainMembership{}
+		}
+
+		if len(targets) == 0 {
+			return memberships, nil
+		}
+
+		client, err := getRuleChainClient()
+		if err != nil {
+			return nil, fmt.Errorf("initializing rule chain client: %w", err)
+		}
+		chains, err := client.ListAll(ctx, namespace, resource.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+
+		remaining := len(targets)
+		for _, chain := range chains.Items {
+			for _, ref := range chain.Spec.RecordingRules {
+				uid := string(ref.Uid)
+				if _, ok := targets[uid]; ok {
+					memberships[uid] = rulesAppConfig.RuleChainMembership{ChainUID: chain.Name, Found: true}
+					delete(targets, uid)
+					remaining--
+				}
+			}
+			for _, ref := range chain.Spec.AlertingRules {
+				uid := string(ref.Uid)
+				if _, ok := targets[uid]; ok {
+					memberships[uid] = rulesAppConfig.RuleChainMembership{ChainUID: chain.Name, Found: true}
+					delete(targets, uid)
+					remaining--
+				}
+			}
+			if remaining == 0 {
+				break
+			}
+		}
+
+		return memberships, nil
 	}
 
 	appSpecificConfig := rulesAppConfig.RuntimeConfig{
@@ -78,6 +197,34 @@ func RegisterAppInstaller(
 		},
 		BaseEvaluationInterval: ng.Cfg.UnifiedAlerting.BaseInterval,
 		ReservedLabelKeys:      ngmodels.LabelsUserCannotSpecify,
+		EnableRuleChains:       enableRuleChains,
+		// TODO: ResolveRuleRef currently uses the legacy RuleStore (GetAlertRuleByUID).
+		// In the legacy model, both alert rules and recording rules live in the same
+		// alert_rule table, so this query covers both rule types referenced by a RuleChain.
+		// When alert/recording rules move to k8s-native storage, this callback will need
+		// to switch to a k8s client lookup (or be replaced by an informer-based resolver).
+		ResolveRuleRef: func(ctx context.Context, uid string) (rulesAppConfig.RuleRef, bool, error) {
+			orgID, err := reqns.OrgIDForList(ctx)
+			if err != nil || orgID < 1 {
+				if user, _ := identity.GetRequester(ctx); user != nil {
+					orgID = user.GetOrgID()
+				}
+			}
+			if orgID < 1 {
+				return rulesAppConfig.RuleRef{}, false, errors.New("could not resolve org ID")
+			}
+
+			r, err := ng.Api.RuleStore.GetAlertRuleByUID(ctx, &ngmodels.GetAlertRuleByUIDQuery{OrgID: orgID, UID: uid})
+			if err != nil {
+				if errors.Is(err, ngmodels.ErrAlertRuleNotFound) {
+					return rulesAppConfig.RuleRef{}, false, nil
+				}
+				return rulesAppConfig.RuleRef{}, false, err
+			}
+
+			return rulesAppConfig.RuleRef{UID: r.UID, FolderUID: r.NamespaceUID}, true, nil
+		},
+		ResolveRuleChainMemberships: resolveRuleChainMemberships,
 		// Validate that the configured notification receiver exists in the Alertmanager config
 		NotificationSettingsValidator: func(ctx context.Context, receiver string) (bool, error) {
 			if receiver == "" {
@@ -133,6 +280,8 @@ func (a *AppInstaller) GetAuthorizer() authorizer.Authorizer {
 				return recordingrule.Authorize(ctx, authz, a)
 			case alertrule.ResourceInfo.GroupResource().Resource:
 				return alertrule.Authorize(ctx, authz, a)
+			case rulechain.ResourceInfo.GroupResource().Resource:
+				return rulechain.Authorize(ctx, authz, a)
 			}
 			return authorizer.DecisionNoOpinion, "", nil
 		},
@@ -146,6 +295,8 @@ func (a *AppInstaller) GetLegacyStorage(gvr schema.GroupVersionResource) grafana
 		return recordingrule.NewStorage(*a.ng.Api.AlertRules, namespacer)
 	case alertrule.ResourceInfo.GroupVersionResource():
 		return alertrule.NewStorage(*a.ng.Api.AlertRules, namespacer)
+	case rulechain.ResourceInfo.GroupVersionResource():
+		return nil
 	default:
 		panic("unknown legacy storage requested: " + gvr.String())
 	}
