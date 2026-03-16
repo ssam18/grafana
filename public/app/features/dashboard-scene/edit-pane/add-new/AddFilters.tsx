@@ -15,6 +15,10 @@ export function AddFilters({ dashboardScene }: { dashboardScene: DashboardScene 
   }, [dashboardScene]);
 
   return (
-    <AddButton icon="filter" label={t('dashboard-scene.add-filters.label', 'Filters')} onClick={onAddFiltersClick} />
+    <AddButton
+      icon="filter"
+      label={t('dashboard-scene.add-filters.label', 'Filter and Group by')}
+      onClick={onAddFiltersClick}
+    />
   );
 }

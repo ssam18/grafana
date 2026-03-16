@@ -15,13 +15,7 @@ import { DashboardScene } from '../../scene/DashboardScene';
 import { EditableDashboardElement, EditableDashboardElementInfo } from '../../scene/types/EditableDashboardElement';
 import { DashboardInteractions } from '../../utils/interactions';
 
-import {
-  EditableVariableType,
-  FILTER_VARIABLE_TYPES,
-  getNextAvailableId,
-  getVariableScene,
-  getVariableTypeSelectOptions,
-} from './utils';
+import { EditableVariableType, getNextAvailableId, getVariableScene, getVariableTypeSelectOptions } from './utils';
 
 export function openAddVariablePane(dashboard: DashboardScene) {
   const element = new VariableAdd({ dashboardRef: dashboard.getRef() });
@@ -75,7 +69,7 @@ export function VariableTypeSelection({ variableAdd }: { variableAdd: VariableAd
   const options = useMemo(() => {
     const allOptions = getVariableTypeSelectOptions();
     if (config.featureToggles.dashboardUnifiedDrilldownControls) {
-      return allOptions.filter((option) => !FILTER_VARIABLE_TYPES.includes(option.value!));
+      return allOptions.filter((option) => option.value !== 'adhoc');
     }
     return allOptions;
   }, []);
