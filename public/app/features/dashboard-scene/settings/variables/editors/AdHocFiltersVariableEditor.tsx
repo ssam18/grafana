@@ -63,12 +63,14 @@ export function AdHocFiltersVariableEditor(props: AdHocFiltersVariableEditorProp
     ? 'Ad hoc filters are applied automatically to all queries that target this data source'
     : 'This data source does not support ad hoc filters.';
 
-  const onDataSourceChange = (ds: DataSourceInstanceSettings) => {
+  const onDataSourceChange = async (ds: DataSourceInstanceSettings) => {
     const dsRef = getDataSourceRef(ds);
+    const dsInstance = await getDataSourceSrv().get(dsRef);
 
     variable.setState({
       datasource: dsRef,
       supportsMultiValueOperators: ds.meta.multiValueFilterOperators,
+      supportsGroupByOperator: !!dsInstance.getGroupByKeys,
     });
   };
 
