@@ -1,4 +1,4 @@
-import { PanelPlugin, LogsSortOrder, LogsDedupStrategy, LogsDedupDescription, FieldType } from '@grafana/data';
+import { PanelPlugin, LogsSortOrder, LogsDedupStrategy, LogsDedupDescription, DataFrameType } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { config } from '@grafana/runtime';
 import { showDefaultSuggestion } from 'app/features/panel/suggestions/utils';
@@ -248,5 +248,7 @@ export const plugin = new PanelPlugin<Options>(LogsPanel)
       });
   })
   .setSuggestionsSupplier(
-    showDefaultSuggestion((ds) => ds.hasData && ds.hasFieldType(FieldType.time) && ds.hasFieldType(FieldType.string))
+    showDefaultSuggestion(
+      (ds) => ds.hasData && (ds.hasPreferredVisualisationType('logs') || ds.hasDataFrameType(DataFrameType.LogLines))
+    )
   );
