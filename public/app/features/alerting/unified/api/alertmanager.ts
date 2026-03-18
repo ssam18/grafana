@@ -58,17 +58,6 @@ export async function updateAlertManagerConfig(
   );
 }
 
-export async function deleteAlertManagerConfig(alertManagerSourceName: string): Promise<void> {
-  await lastValueFrom(
-    getBackendSrv().fetch({
-      method: 'DELETE',
-      url: `/api/alertmanager/${getDatasourceAPIUid(alertManagerSourceName)}/config/api/v1/alerts`,
-      showErrorAlert: false,
-      showSuccessAlert: false,
-    })
-  );
-}
-
 export async function fetchAlertGroups(alertmanagerSourceName: string): Promise<AlertmanagerGroup[]> {
   const result = await lastValueFrom(
     getBackendSrv().fetch<AlertmanagerGroup[]>({

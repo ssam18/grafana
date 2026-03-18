@@ -8,7 +8,7 @@ import { RuleIdentifier, RuleNamespace, StateHistoryItem } from 'app/types/unifi
 import { RulerRuleDTO, RulerRulesConfigDTO } from 'app/types/unified-alerting-dto';
 
 import { withPromRulesMetadataLogging, withRulerRulesMetadataLogging } from '../Analytics';
-import { deleteAlertManagerConfig, fetchAlertGroups, updateAlertManagerConfig } from '../api/alertmanager';
+import { fetchAlertGroups, updateAlertManagerConfig } from '../api/alertmanager';
 import { alertmanagerApi } from '../api/alertmanagerApi';
 import { fetchAnnotations } from '../api/annotations';
 import { featureDiscoveryApi } from '../api/featureDiscoveryApi';
@@ -232,24 +232,6 @@ export const fetchAlertGroupsAction = createAsyncThunk(
   'unifiedalerting/fetchAlertGroups',
   (alertManagerSourceName: string): Promise<AlertmanagerGroup[]> => {
     return withSerializedError(fetchAlertGroups(alertManagerSourceName));
-  }
-);
-
-export const deleteAlertManagerConfigAction = createAsyncThunk(
-  'unifiedalerting/deleteAlertManagerConfig',
-  async (alertManagerSourceName: string, thunkAPI): Promise<void> => {
-    return withAppEvents(
-      withSerializedError(
-        (async () => {
-          await deleteAlertManagerConfig(alertManagerSourceName);
-          await thunkAPI.dispatch(alertmanagerApi.util.invalidateTags(['AlertmanagerConfiguration']));
-        })()
-      ),
-      {
-        errorMessage: 'Failed to reset Alertmanager configuration',
-        successMessage: 'Alertmanager configuration reset.',
-      }
-    );
   }
 );
 

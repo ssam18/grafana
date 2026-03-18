@@ -1,11 +1,11 @@
 import { css } from '@emotion/css';
-import { type JSX, useEffect, useState } from 'react';
+import { type JSX, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import AutoSizer from 'react-virtualized-auto-sizer';
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { Trans, t } from '@grafana/i18n';
-import { Alert, Button, CodeEditor, ConfirmModal, Stack, useStyles2 } from '@grafana/ui';
+import { Alert, Button, CodeEditor, Stack, useStyles2 } from '@grafana/ui';
 
 import { reportFormErrors } from '../../Analytics';
 import { useAlertmanagerConfig } from '../../hooks/useAlertmanagerConfig';
@@ -22,13 +22,10 @@ interface Props {
   alertmanagerName: string;
   onDismiss: () => void;
   onSave: (dataSourceName: string, oldConfig: string, newConfig: string) => void;
-  onReset: (dataSourceName: string) => void;
 }
 
-export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave, onReset }: Props): JSX.Element {
-  const { loading: isDeleting, error: deletingError } = useUnifiedAlertingSelector((state) => state.deleteAMConfig);
+export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave }: Props): JSX.Element {
   const { loading: isSaving, error: savingError } = useUnifiedAlertingSelector((state) => state.saveAMConfig);
-  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
   const isGrafanaManagedAlertmanager = alertmanagerName === GRAFANA_RULES_SOURCE_NAME;
 
   // ⚠️ provisioned data sources should not prevent the configuration from being edited
@@ -71,12 +68,6 @@ export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave
     }
   }, [savingError, setError]);
 
-  useEffect(() => {
-    if (deletingError) {
-      setError('configJSON', { type: 'deps', message: deletingError.message });
-    }
-  }, [deletingError, setError]);
-
   // manually register the config field with validation
   // @TODO sometimes the value doesn't get registered – find out why
   register('configJSON', {
@@ -98,7 +89,7 @@ export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave
     onSave(alertmanagerName, defaultValues.configJSON, values.configJSON);
   }, reportFormErrors);
 
-  const isOperating = isLoadingConfig || isDeleting || isSaving;
+  const isOperating = isLoadingConfig || isSaving;
 
   /* loading error, if this fails don't bother rendering the form */
   if (loadingError) {
@@ -114,29 +105,6 @@ export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave
       </Alert>
     );
   }
-
-  /* resetting configuration state */
-  if (isDeleting) {
-    return (
-      <Alert
-        severity="info"
-        title={t(
-          'alerting.alertmanager-config.title-resetting-alertmanager-configuration',
-          'Resetting Alertmanager configuration'
-        )}
-      >
-        <Trans i18nKey="alerting.alertmanager-config.resetting-configuration-might-while">
-          Resetting configuration, this might take a while.
-        </Trans>
-      </Alert>
-    );
-  }
-
-  const confirmationText = t(
-    'alerting.alertmanager-config.reset-confirmation',
-    'Are you sure you want to reset configuration for "{{alertmanagerName}}"? Contact points and notification policies will be reset to their defaults.',
-    { alertmanagerName }
-  );
 
   return (
     <div className={styles.container}>
@@ -189,11 +157,6 @@ export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave
       )}
 
       <Stack justifyContent="flex-end">
-        {!readOnly && (
-          <Button variant="destructive" onClick={() => setShowResetConfirmation(true)} disabled={isOperating}>
-            <Trans i18nKey="alerting.alertmanager-config.reset">Reset</Trans>
-          </Button>
-        )}
         <Spacer />
         <Button variant="secondary" onClick={() => onDismiss()} disabled={isOperating}>
           <Trans i18nKey="alerting.common.cancel">Cancel</Trans>
@@ -204,22 +167,6 @@ export default function AlertmanagerConfig({ alertmanagerName, onDismiss, onSave
           </Button>
         )}
       </Stack>
-      <ConfirmModal
-        isOpen={showResetConfirmation}
-        title={t(
-          'alerting.alertmanager-config.title-reset-alertmanager-configuration',
-          'Reset Alertmanager configuration'
-        )}
-        body={confirmationText}
-        confirmText={t('alerting.alertmanager-config.confirmText-yes-reset-configuration', 'Yes, reset configuration')}
-        onConfirm={() => {
-          onReset(alertmanagerName);
-          setShowResetConfirmation(false);
-        }}
-        onDismiss={() => {
-          setShowResetConfirmation(false);
-        }}
-      />
     </div>
   );
 }

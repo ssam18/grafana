@@ -20,7 +20,7 @@ import {
 
 const renderConfiguration = (
   alertManagerSourceName: string,
-  { onDismiss = jest.fn(), onSave = jest.fn(), onReset = jest.fn() }
+  { onDismiss = jest.fn(), onSave = jest.fn() }
 ) =>
   render(
     <AlertmanagerProvider accessType="instance">
@@ -28,21 +28,17 @@ const renderConfiguration = (
         alertmanagerName={alertManagerSourceName}
         onDismiss={onDismiss}
         onSave={onSave}
-        onReset={onReset}
       />
     </AlertmanagerProvider>
   );
 
 const ui = {
-  resetButton: byRole('button', { name: /Reset/ }),
-  resetConfirmButton: byRole('button', { name: /Yes, reset configuration/ }),
   saveButton: byRole('button', { name: /Save/ }),
   cancelButton: byRole('button', { name: /Cancel/ }),
 };
 
 const waitForEditableConfig = async () => {
   await waitFor(() => expect(ui.saveButton.get()).toBeEnabled());
-  expect(ui.resetButton.get()).toBeEnabled();
 };
 
 describe('Alerting Settings', () => {
@@ -50,13 +46,6 @@ describe('Alerting Settings', () => {
 
   beforeEach(() => {
     grantUserPermissions([AccessControlAction.AlertingNotificationsRead, AccessControlAction.AlertingInstanceRead]);
-  });
-
-  it('should not be able to reset alertmanager config', async () => {
-    const onReset = jest.fn();
-    renderConfiguration('grafana', { onReset });
-
-    expect(ui.resetButton.query()).not.toBeInTheDocument();
   });
 
   it('should be able to cancel', async () => {
@@ -86,7 +75,6 @@ describe('vanilla Alertmanager', () => {
 
     expect(ui.cancelButton.get()).toBeInTheDocument();
     expect(ui.saveButton.query()).not.toBeInTheDocument();
-    expect(ui.resetButton.query()).not.toBeInTheDocument();
   });
 
   it('should not be read-only when Mimir Alertmanager', async () => {
@@ -94,24 +82,6 @@ describe('vanilla Alertmanager', () => {
 
     expect(ui.cancelButton.get()).toBeInTheDocument();
     expect(ui.saveButton.get()).toBeInTheDocument();
-    expect(ui.resetButton.get()).toBeInTheDocument();
     await waitForEditableConfig();
-  });
-
-  it('should be able to reset non-Grafana alertmanager config', async () => {
-    const onReset = jest.fn();
-    renderConfiguration(PROVISIONED_MIMIR_ALERTMANAGER_UID, { onReset });
-
-    expect(ui.cancelButton.get()).toBeInTheDocument();
-    expect(ui.saveButton.get()).toBeInTheDocument();
-    expect(ui.resetButton.get()).toBeInTheDocument();
-    await waitForEditableConfig();
-
-    await userEvent.click(ui.resetButton.get());
-
-    await userEvent.click(ui.resetConfirmButton.get());
-
-    await waitFor(() => expect(onReset).toHaveBeenCalled());
-    expect(onReset).toHaveBeenLastCalledWith(PROVISIONED_MIMIR_ALERTMANAGER_UID);
   });
 });

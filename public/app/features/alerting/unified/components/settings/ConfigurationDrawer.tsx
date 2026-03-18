@@ -15,7 +15,7 @@ export function useEditConfigurationDrawer() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('configuration');
   const [dataSourceName, setDataSourceName] = useState<string | undefined>();
   const [open, setOpen] = useState(false);
-  const { updateAlertmanagerSettings, resetAlertmanagerSettings } = useSettings();
+  const { updateAlertmanagerSettings } = useSettings();
 
   const isGrafanaManagedAlertmanager = dataSourceName === GRAFANA_RULES_SOURCE_NAME;
   const immutableDataSource = dataSourceName ? isVanillaPrometheusAlertManagerDataSource(dataSourceName) : false;
@@ -85,7 +85,6 @@ export function useEditConfigurationDrawer() {
             alertmanagerName={dataSourceName}
             onDismiss={handleDismiss}
             onSave={updateAlertmanagerSettings}
-            onReset={resetAlertmanagerSettings}
           />
         )}
         {activeTab === 'versions' && dataSourceName && (
@@ -93,7 +92,7 @@ export function useEditConfigurationDrawer() {
         )}
       </Drawer>
     );
-  }, [open, dataSourceName, readOnly, handleDismiss, activeTab, updateAlertmanagerSettings, resetAlertmanagerSettings]);
+  }, [open, dataSourceName, readOnly, handleDismiss, activeTab, updateAlertmanagerSettings]);
 
   return [drawer, showConfiguration, handleDismiss] as const;
 }

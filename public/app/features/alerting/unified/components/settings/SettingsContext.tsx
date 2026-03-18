@@ -12,7 +12,7 @@ import {
   ExternalAlertmanagerDataSourceWithStatus,
   useExternalDataSourceAlertmanagers,
 } from '../../hooks/useExternalAmSelector';
-import { deleteAlertManagerConfigAction, updateAlertManagerConfigAction } from '../../state/actions';
+import { updateAlertManagerConfigAction } from '../../state/actions';
 import { GRAFANA_RULES_SOURCE_NAME, isAlertmanagerDataSourceInterestedInAlerts } from '../../utils/datasource';
 import { isInternalAlertmanagerInterestedInAlerts } from '../../utils/settings';
 
@@ -31,9 +31,8 @@ interface Context {
   enableAlertmanager: (uid: string) => void;
   disableAlertmanager: (uid: string) => void;
 
-  // for updating or resetting the configuration for an Alertmanager
+  // for updating the configuration for an Alertmanager
   updateAlertmanagerSettings: (name: string, oldConfig: string, newConfig: string) => void;
-  resetAlertmanagerSettings: (name: string) => void;
 
   // this feature toggle is for disabling the "send to external Alertmanagers" feature
   forwardingDisabled: boolean;
@@ -114,10 +113,6 @@ export const SettingsProvider = (props: PropsWithChildren) => {
     );
   };
 
-  const resetAlertmanagerSettings = (alertmanagerName: string) => {
-    dispatch(deleteAlertManagerConfigAction(alertmanagerName));
-  };
-
   const value: Context = {
     configuration,
     forwardingDisabled,
@@ -131,7 +126,6 @@ export const SettingsProvider = (props: PropsWithChildren) => {
 
     // CRUD for Alertmanager settings
     updateAlertmanagerSettings,
-    resetAlertmanagerSettings,
   };
 
   return <SettingsContext.Provider value={value}>{props.children}</SettingsContext.Provider>;
