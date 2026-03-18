@@ -249,7 +249,9 @@ export class UnifiedSearcher implements GrafanaSearcher {
   }
 
   async fetchResponse(params: SearchDashboardsAndFoldersApiArg): Promise<SearchResults> {
-    const rsp: SearchResults = await dispatch(dashboardAPI.endpoints.searchDashboardsAndFolders.initiate(params)).unwrap();
+    const rsp: SearchResults = await dispatch(
+      dashboardAPI.endpoints.searchDashboardsAndFolders.initiate(params)
+    ).unwrap();
 
     // we check the locationInfo staleness by whether we have all the folders info. This does not mean though
     // that we actually have the latest info about the folders (like changed labels). Also we will never actually
@@ -405,13 +407,13 @@ export function toDashboardResults(rsp: SearchResults, sort: string): DataFrame 
       Object.entries(hit.field ?? {}).map(([key, value]) => [key, value == null ? '-' : value])
     );
 
-    // Sort tags so we aren't reliant on the backend having done this for us
-    // Sorting order can be different between APIs/search implementations
     return {
       ...hit,
       uid: hit.name,
       url: toURL(hit.resource, hit.name, hit.title),
-      tags: (hit.tags || []).sort(),
+      // Sort tags so we aren't reliant on the backend having done this for us
+      // Sorting order can be different between APIs/search implementations
+      tags: [...(hit.tags || [])].sort(),
       folder: hit.folder || 'general',
       location,
       name: hit.title, // 🤯 FIXME hit.name is k8s name, eg grafana dashboards UID
