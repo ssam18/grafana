@@ -351,6 +351,8 @@ export class DashboardScene extends SceneObjectBase<DashboardSceneState> impleme
     }
 
     if (config.featureToggles.dashboardNewLayouts) {
+      const canSave = Boolean(this.state.meta.canSave);
+
       appEvents.publish(
         new ShowConfirmModalEvent({
           title: t('dashboard-scene.dashboard-scene.modal.title.unsaved-changes', 'Unsaved changes'),
@@ -359,17 +361,19 @@ export class DashboardScene extends SceneObjectBase<DashboardSceneState> impleme
             'Do you want to save your changes?'
           ),
           icon: 'trash-alt',
-          altActionText: t('dashboard-scene.dashboard-scene.modal.save', 'Save'),
+          altActionText: canSave ? t('dashboard-scene.dashboard-scene.modal.save', 'Save') : undefined,
           noText: t('dashboard-scene.dashboard-scene.modal.cancel', 'Cancel'),
           yesText: t('dashboard-scene.dashboard-scene.modal.discard', 'Discard'),
           yesButtonVariant: 'destructive',
-          onAltAction: () => {
-            this.openSaveDrawer({
-              onSaveSuccess: () => {
-                this.exitEditModeConfirmed(false);
-              },
-            });
-          },
+          onAltAction: canSave
+            ? () => {
+                this.openSaveDrawer({
+                  onSaveSuccess: () => {
+                    this.exitEditModeConfirmed(false);
+                  },
+                });
+              }
+            : undefined,
           onConfirm: () => {
             this.exitEditModeConfirmed();
           },
