@@ -785,6 +785,8 @@ type ElasticsearchDataQuery struct {
 	BucketAggs []BucketAggregation `json:"bucketAggs,omitempty"`
 	// List of metric aggregations
 	Metrics []MetricAggregation `json:"metrics,omitempty"`
+	// Variable query metadata for field mapping
+	Meta *DataqueryElasticsearchDataQueryMeta `json:"meta,omitempty"`
 	// A unique identifier for the query within the list of targets.
 	// In server side expressions, the refId is used as a variable name to identify results.
 	// By default, the UI will assign A->Z; however setting meaningful names may be useful.
@@ -1084,6 +1086,18 @@ type DataqueryMovingAverageHoltWintersModelSettingsSettings struct {
 // NewDataqueryMovingAverageHoltWintersModelSettingsSettings creates a new DataqueryMovingAverageHoltWintersModelSettingsSettings object.
 func NewDataqueryMovingAverageHoltWintersModelSettingsSettings() *DataqueryMovingAverageHoltWintersModelSettingsSettings {
 	return &DataqueryMovingAverageHoltWintersModelSettingsSettings{}
+}
+
+type DataqueryElasticsearchDataQueryMeta struct {
+	// Text field name for variable values
+	TextField *string `json:"textField,omitempty"`
+	// Value field name for variable values
+	ValueField *string `json:"valueField,omitempty"`
+}
+
+// NewDataqueryElasticsearchDataQueryMeta creates a new DataqueryElasticsearchDataQueryMeta object.
+func NewDataqueryElasticsearchDataQueryMeta() *DataqueryElasticsearchDataQueryMeta {
+	return &DataqueryElasticsearchDataQueryMeta{}
 }
 
 type DateHistogramOrHistogramOrTermsOrFiltersOrGeoHashGridOrNested struct {
