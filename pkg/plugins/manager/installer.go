@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	"github.com/grafana/grafana/pkg/plugins"
@@ -178,7 +179,7 @@ func (m *PluginInstaller) updateFromCatalog(ctx context.Context, plugin *plugins
 		return nil, fmt.Errorf("could not determine update options for %s", plugin.ID)
 	}
 
-	// remove existing installation of plugin
+	// remove existing installation of plugin (unless bundled)
 	err = m.Remove(ctx, plugin.ID, plugin.Info.Version)
 	if err != nil {
 		return nil, err
@@ -207,8 +208,13 @@ func (m *PluginInstaller) Remove(ctx context.Context, pluginID, version string) 
 	}
 
 	if remover, ok := p.FS.(plugins.FSRemover); ok {
-		if err = remover.Remove(); err != nil {
-			return err
+		// Only remove plugins from the regular plugin directory, not bundled plugins
+		if m.shouldRemove(p.FS.Base()) {
+			if err = remover.Remove(); err != nil {
+				return err
+			}
+		} else {
+			m.log.Debug("Skipping removal for bundled plugin", "pluginId", pluginID, "path", p.FS.Base())
 		}
 	}
 
@@ -227,6 +233,15 @@ func (m *PluginInstaller) plugin(ctx context.Context, pluginID, pluginVersion st
 	}
 
 	return p, true
+}
+
+// shouldRemove reports whether the given plugin path is in the regular plugins
+// directory - plugins in the bundled plugins directory shouldn't be removed
+func (m *PluginInstaller) shouldRemove(path string) bool {
+	if len(m.cfg.PluginsPaths) < 1 {
+		return true
+	}
+	return filepath.Dir(path) == m.cfg.PluginsPaths[0]
 }
 
 func RepoCompatOpts(opts plugins.AddOpts) (repo.CompatOpts, error) {
