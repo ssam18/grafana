@@ -8,9 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/grafana/grafana-plugin-sdk-go/backend"
 )
 
 func TestSubQueryConvertConnect(t *testing.T) {

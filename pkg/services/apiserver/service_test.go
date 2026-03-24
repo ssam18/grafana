@@ -3,8 +3,9 @@ package apiserver
 import (
 	"testing"
 
-	"github.com/grafana/grafana/pkg/services/user"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/grafana/pkg/services/user"
 )
 
 func Test_useNamespaceFromPath(t *testing.T) {

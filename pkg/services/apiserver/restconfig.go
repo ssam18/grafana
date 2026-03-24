@@ -7,15 +7,9 @@ import (
 
 	clientrest "k8s.io/client-go/rest"
 
+	"github.com/grafana/grafana/pkg/services/apiserver/utils"
 	contextmodel "github.com/grafana/grafana/pkg/services/contexthandler/model"
 )
-
-type RestConfigProvider interface {
-	// GetRestConfig returns a k8s client configuration that is used to provide connection info and auth for the loopback transport.
-	// context is only available for tracing in this immediate function and is not to be confused with the context seen by any client verb actions that are invoked with the retrieved rest config.
-	// - those client verb actions have the ability to specify their own context.
-	GetRestConfig(context.Context) (*clientrest.Config, error)
-}
 
 type RestConfigProviderFunc func(context.Context) (*clientrest.Config, error)
 
@@ -59,7 +53,7 @@ func ProvideDirectRestConfigProvider() DirectRestConfigProvider {
 }
 
 var (
-	_ RestConfigProvider       = (*eventualRestConfigProvider)(nil)
+	_ utils.RestConfigProvider = (*eventualRestConfigProvider)(nil)
 	_ DirectRestConfigProvider = (*eventualRestConfigProvider)(nil)
 )
 
@@ -71,7 +65,7 @@ type eventualRestConfigProvider struct {
 	// When this channel is closed, we can start returning the rest config.
 	ready chan struct{}
 	cfg   interface {
-		RestConfigProvider
+		utils.RestConfigProvider
 		DirectRestConfigProvider
 	}
 }

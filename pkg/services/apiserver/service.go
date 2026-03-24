@@ -58,7 +58,7 @@ import (
 
 var (
 	_ Service                    = (*service)(nil)
-	_ RestConfigProvider         = (*service)(nil)
+	_ utils.RestConfigProvider   = (*service)(nil)
 	_ registry.BackgroundService = (*service)(nil)
 	_ registry.CanBeDisabled     = (*service)(nil)
 )
@@ -102,7 +102,7 @@ type service struct {
 	pluginStore        pluginstore.Store
 	unified            resource.ResourceClient
 	secrets            secret.InlineSecureValueSupport
-	restConfigProvider RestConfigProvider
+	restConfigProvider utils.RestConfigProvider
 
 	buildHandlerChainFuncFromBuilders builder.BuildHandlerChainFuncFromBuilders
 	aggregatorRunner                  aggregatorrunner.AggregatorRunner
@@ -126,7 +126,7 @@ func ProvideService(
 	dualWriter dualwrite.Service,
 	unified resource.ResourceClient,
 	secrets secret.InlineSecureValueSupport,
-	restConfigProvider RestConfigProvider,
+	restConfigProvider utils.RestConfigProvider,
 	buildHandlerChainFuncFromBuilders builder.BuildHandlerChainFuncFromBuilders,
 	eventualRestConfigProvider *eventualRestConfigProvider,
 	reg prometheus.Registerer,

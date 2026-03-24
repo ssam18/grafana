@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
+	"github.com/grafana/grafana/apps/secret/pkg/decrypt"
 	"github.com/grafana/grafana/pkg/apimachinery/identity"
 	datasourceV0 "github.com/grafana/grafana/pkg/apis/datasource/v0alpha1"
 	"github.com/grafana/grafana/pkg/plugins"
 	"github.com/grafana/grafana/pkg/registry/apis/datasource/converter"
 	"github.com/grafana/grafana/pkg/services/apiserver/endpoints/request"
+	"github.com/grafana/grafana/pkg/services/apiserver/utils"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/services/pluginsintegration/plugincontext"
 	"github.com/grafana/grafana/pkg/setting"
@@ -52,6 +56,8 @@ func ProvideDefaultPluginConfigs(
 	dsService datasources.DataSourceService,
 	dsCache datasources.CacheService,
 	contextProvider *plugincontext.Provider,
+	decrypter decrypt.DecryptService,
+	configProvider utils.RestConfigProvider,
 	cfg *setting.Cfg,
 ) ScopedPluginDatasourceProvider {
 	return &cachingDatasourceProvider{
@@ -67,9 +73,18 @@ type cachingDatasourceProvider struct {
 	dsCache         datasources.CacheService
 	contextProvider *plugincontext.Provider
 	converter       *converter.Converter
+	decrypter       decrypt.DecryptService
+	configProvider  utils.RestConfigProvider
 }
 
 func (q *cachingDatasourceProvider) GetDatasourceProvider(pluginJson plugins.JSONData) PluginDatasourceProvider {
+	if true { // based on config+feature toggles at startup time!
+		return NewDatasourceProvider(schema.GroupVersionResource{
+			Group:    fmt.Sprintf("%s.datasource.grafana.app", pluginJson.ID),
+			Version:  "v0alpha1",
+			Resource: "datasources",
+		}, pluginJson.ID, q.configProvider, q.decrypter)
+	}
 	return &scopedDatasourceProvider{
 		plugin:          pluginJson,
 		dsService:       q.dsService,
