@@ -51,6 +51,48 @@ const (
 	dataBatchSize = 50 // default batch size for BatchGet operations
 )
 
+// DataStore is the interface for reading and writing resource data.
+// Implementations include the KV-backed dataStore and the segment-backed segmentDataStore.
+type DataStore interface {
+	// Keys iterates all versions of resources matching a prefix.
+	Keys(ctx context.Context, key ListRequestKey, sort SortOrder) iter.Seq2[DataKey, error]
+
+	// LastResourceVersion returns the latest version of a single resource (includes deleted).
+	LastResourceVersion(ctx context.Context, key ListRequestKey) (DataKey, error)
+
+	// GetLatestAndPredecessor returns the latest and immediate predecessor (for optimistic locking verification).
+	GetLatestAndPredecessor(ctx context.Context, key ListRequestKey) (DataKey, DataKey, error)
+
+	// GetLatestResourceKey returns the latest non-deleted version of a resource.
+	GetLatestResourceKey(ctx context.Context, key GetRequestKey) (DataKey, error)
+
+	// GetResourceKeyAtRevision returns the latest non-deleted version at a specific RV (rv=0 means latest).
+	GetResourceKeyAtRevision(ctx context.Context, key GetRequestKey, rv int64) (DataKey, error)
+
+	// ListLatestResourceKeys iterates the latest non-deleted version of each resource in prefix.
+	ListLatestResourceKeys(ctx context.Context, key ListRequestKey) iter.Seq2[DataKey, error]
+
+	// ListResourceKeysAtRevision iterates latest non-deleted at RV, with pagination support.
+	ListResourceKeysAtRevision(ctx context.Context, options ListRequestOptions) iter.Seq2[DataKey, error]
+
+	// Get fetches resource bytes by exact DataKey.
+	Get(ctx context.Context, key DataKey) (io.ReadCloser, error)
+
+	// BatchGet fetches resource bytes in batch.
+	BatchGet(ctx context.Context, keys []DataKey) iter.Seq2[DataObj, error]
+
+	// Save persists resource bytes at a DataKey.
+	Save(ctx context.Context, key DataKey, value io.Reader) error
+
+	// Delete removes a DataKey (used by optimistic locking rollback + GC).
+	Delete(ctx context.Context, key DataKey) error
+
+	// GetResourceStats counts resources per namespace for a group/resource.
+	GetResourceStats(ctx context.Context, nsr NamespacedResource, minCount int) ([]ResourceStats, error)
+}
+
+var _ DataStore = &dataStore{}
+
 // dataStore is a data store that uses a KV store to store data.
 type dataStore struct {
 	kv            KV
