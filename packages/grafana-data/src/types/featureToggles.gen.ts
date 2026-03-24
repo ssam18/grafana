@@ -494,6 +494,11 @@ export interface FeatureToggles {
   */
   tableSharedCrosshair?: boolean;
   /**
+  * Enables option to position series names above bars in the state timeline panel
+  * @default false
+  */
+  stateTimelineNameAboveBars?: boolean;
+  /**
   * Enabled grafana cloud specific RBAC roles
   * @default false
   */
