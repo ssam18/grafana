@@ -1,6 +1,6 @@
 import { css } from '@emotion/css';
-import { autoUpdate } from '@floating-ui/dom';
-import { useFloating } from '@floating-ui/react';
+import { autoUpdate, offset } from '@floating-ui/dom';
+import { Placement, safePolygon, useFloating, useFocus, useHover, useInteractions } from '@floating-ui/react';
 import * as React from 'react';
 import { ReactNode, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -55,23 +55,42 @@ export const AnnotationMarker2 = ({
   showTooltipOnHover,
   isPinned,
 }: AnnotationMarkerProps) => {
-  const styles = useStyles2(getStyles);
-  const placement = 'bottom';
-  const isRegion = annoVals?.isRegion?.[annoIdx] === true;
-
+  const [isHovering, setIsHovering] = useState(false);
   // Set when editing
   const [editAnnotationId, setEditAnnotationId] = useState(exitWipEdit != null ? annoIdx : null);
-  const [isHovering, setIsHovering] = useState(false);
+
+  const isEditing = editAnnotationId !== null;
+  const showTooltip = (isPinned && !isEditing) || (showTooltipOnHover && isHovering && !isEditing);
+
+  const styles = useStyles2(getStyles, isHovering || isPinned);
+  const placement: Placement = 'bottom';
+  const isRegion = annoVals?.isRegion?.[annoIdx] === true;
+
   const isClustering =
     annoVals.isRegion?.[annoIdx] && annoVals.clusterIdx?.[annoIdx] != null && annoVals.clusterIdx?.[annoIdx] > -1;
 
-  const { refs, floatingStyles } = useFloating({
-    open: true,
+  const { context, refs, floatingStyles } = useFloating({
+    open: showTooltip,
+    onOpenChange: (open) => {
+      if (!isPinned && !isEditing) {
+        setIsHovering(open);
+      }
+    },
     placement,
-    middleware: floatingUtils.getPositioningMiddleware(placement),
+    middleware: [offset(10), ...floatingUtils.getPositioningMiddleware(placement)],
     whileElementsMounted: autoUpdate,
     strategy: 'fixed',
   });
+
+  const hover = useHover(context, {
+    handleClose: safePolygon(),
+    move: false,
+    enabled: showTooltipOnHover && !isPinned,
+  });
+  const focus = useFocus(context, {
+    enabled: showTooltipOnHover && !isPinned,
+  });
+  const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus]);
 
   const onClose = () => {
     setPinned(false);
@@ -93,9 +112,6 @@ export const AnnotationMarker2 = ({
       }
     });
   }
-
-  const isEditing = editAnnotationId !== null;
-  const showTooltip = (isPinned && !isEditing) || (showTooltipOnHover && isHovering && !isEditing);
 
   // We cannot use the array index for editing annotations since clustered and wip annotations will get sorted by date, so we need to grab them by the 'id' field which is populated by the annotations API
   const annoId = annoVals?.id?.[annoIdx];
@@ -155,11 +171,17 @@ export const AnnotationMarker2 = ({
       ref={refs.setReference}
       className={isRegion ? styles.annoRegion : styles.annoMarker}
       style={style!}
-      onFocus={() => setIsHovering(true)}
-      onBlur={() => setIsHovering(false)}
-      onClick={() => setPinned(true)}
-      onMouseEnter={() => showTooltipOnHover && setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
+      {...getFloatingProps()}
+      {...getReferenceProps({
+        onClick: () => setPinned(true),
+        onMouseEnter: () => showTooltipOnHover && setIsHovering(true),
+        // onMouseLeave: () => setIsHovering(false),
+      })}
+      // onFocus={() => setIsHovering(true)}
+      // onBlur={() => setIsHovering(false)}
+      // onClick={() => setPinned(true)}
+      // onMouseEnter={() => showTooltipOnHover && setIsHovering(true)}
+      // onMouseLeave={() => setIsHovering(false)}
       data-testid={selectors.pages.Dashboard.Annotations.marker}
     >
       {contents &&
@@ -175,7 +197,7 @@ export const AnnotationMarker2 = ({
   );
 };
 
-const getStyles = (theme: GrafanaTheme2) => ({
+const getStyles = (theme: GrafanaTheme2, isActive: boolean) => ({
   annoMarker: css({
     position: 'absolute',
     width: 0,
@@ -190,6 +212,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     zIndex: 1,
     padding: 0,
     background: 'none',
+    boxShadow: isActive ? `0 0 0 3px ${theme.colors.primary.border}` : '',
   }),
   annoRegion: css({
     border: 'none',
@@ -199,6 +222,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
     zIndex: 1,
     padding: 0,
     background: 'none',
+    boxShadow: isActive ? `0 0 0 3px ${theme.colors.primary.border}` : '',
   }),
   // NOTE: shares much with TooltipPlugin2
   annoBox: css({
