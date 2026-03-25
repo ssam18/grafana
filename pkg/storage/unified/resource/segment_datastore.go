@@ -188,6 +188,42 @@ func (s *segmentDataStore) openSegment(ctx context.Context, segKey string) (*seg
 	return reader, nil
 }
 
+// collectVersions returns all DataKeys for a given _id term across multiple segments.
+// Uses the _id term dictionary for O(log N) lookup per segment.
+// Result set is bounded by version retention (~20 versions per resource).
+func collectVersions(readers []*segment.SegmentReader, docID string) ([]DataKey, error) {
+	var keys []DataKey
+	for _, reader := range readers {
+		dict, err := reader.Dictionary("_id")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get _id dictionary: %w", err)
+		}
+
+		postings, err := dict.PostingsList([]byte(docID), nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get postings for %s: %w", docID, err)
+		}
+
+		pIter := postings.Iterator(false, false, false, nil)
+		for {
+			posting, err := pIter.Next()
+			if err != nil {
+				return nil, fmt.Errorf("failed to iterate postings: %w", err)
+			}
+			if posting == nil {
+				break
+			}
+
+			dk, err := dataKeyFromSegment(reader, posting.Number())
+			if err != nil {
+				return nil, err
+			}
+			keys = append(keys, dk)
+		}
+	}
+	return keys, nil
+}
+
 // dataKeyFromSegment extracts a DataKey from a segment reader at a given doc number.
 // It parses the doc ID for group/resource/namespace/name and reads stored fields
 // for resource_version, action, and folder.
@@ -412,7 +448,6 @@ func (s *segmentDataStore) openGroupResourceSegments(ctx context.Context, group,
 }
 
 // keysExactName handles Keys when a specific name is provided.
-// Looks up the exact _id term in each segment's dictionary — O(log N) per segment.
 // Result set is small (bounded by version retention limit), so collect + sort is fine.
 func (s *segmentDataStore) keysExactName(
 	readers []*segment.SegmentReader,
@@ -425,41 +460,12 @@ func (s *segmentDataStore) keysExactName(
 		Namespace: key.Namespace, Name: key.Name,
 	})
 
-	var allKeys []DataKey
-	for _, reader := range readers {
-		dict, err := reader.Dictionary("_id")
-		if err != nil {
-			yield(DataKey{}, fmt.Errorf("failed to get _id dictionary: %w", err))
-			return
-		}
-
-		postings, err := dict.PostingsList([]byte(targetDocID), nil, nil)
-		if err != nil {
-			yield(DataKey{}, fmt.Errorf("failed to get postings: %w", err))
-			return
-		}
-
-		pIter := postings.Iterator(false, false, false, nil)
-		for {
-			posting, err := pIter.Next()
-			if err != nil {
-				yield(DataKey{}, fmt.Errorf("failed to iterate postings: %w", err))
-				return
-			}
-			if posting == nil {
-				break
-			}
-
-			dk, err := dataKeyFromSegment(reader, posting.Number())
-			if err != nil {
-				yield(DataKey{}, err)
-				return
-			}
-			allKeys = append(allKeys, dk)
-		}
+	allKeys, err := collectVersions(readers, targetDocID)
+	if err != nil {
+		yield(DataKey{}, err)
+		return
 	}
 
-	// Sort by rv (all keys share the same _id, so only rv differs).
 	slices.SortFunc(allKeys, func(a, b DataKey) int {
 		return strings.Compare(a.String(), b.String())
 	})
@@ -605,35 +611,9 @@ func (s *segmentDataStore) GetLatestAndPredecessor(ctx context.Context, key List
 		Namespace: key.Namespace, Name: key.Name,
 	})
 
-	// Collect all versions for this _id across segments.
-	var allKeys []DataKey
-	for _, reader := range readers {
-		dict, err := reader.Dictionary("_id")
-		if err != nil {
-			return DataKey{}, DataKey{}, fmt.Errorf("failed to get _id dictionary: %w", err)
-		}
-
-		postings, err := dict.PostingsList([]byte(targetDocID), nil, nil)
-		if err != nil {
-			return DataKey{}, DataKey{}, fmt.Errorf("failed to get postings: %w", err)
-		}
-
-		pIter := postings.Iterator(false, false, false, nil)
-		for {
-			posting, err := pIter.Next()
-			if err != nil {
-				return DataKey{}, DataKey{}, fmt.Errorf("failed to iterate postings: %w", err)
-			}
-			if posting == nil {
-				break
-			}
-
-			dk, err := dataKeyFromSegment(reader, posting.Number())
-			if err != nil {
-				return DataKey{}, DataKey{}, err
-			}
-			allKeys = append(allKeys, dk)
-		}
+	allKeys, err := collectVersions(readers, targetDocID)
+	if err != nil {
+		return DataKey{}, DataKey{}, err
 	}
 
 	if len(allKeys) == 0 {
@@ -677,48 +657,24 @@ func (s *segmentDataStore) GetResourceKeyAtRevision(ctx context.Context, key Get
 		Namespace: key.Namespace, Name: key.Name,
 	})
 
-	// Collect all versions for this _id across segments.
+	allKeys, err := collectVersions(readers, targetDocID)
+	if err != nil {
+		return DataKey{}, err
+	}
+
+	// Find highest rv that is non-deleted and within the rv cutoff.
 	var best DataKey
 	found := false
-	for _, reader := range readers {
-		dict, err := reader.Dictionary("_id")
-		if err != nil {
-			return DataKey{}, fmt.Errorf("failed to get _id dictionary: %w", err)
+	for _, dk := range allKeys {
+		if dk.Action == DataActionDeleted {
+			continue
 		}
-
-		postings, err := dict.PostingsList([]byte(targetDocID), nil, nil)
-		if err != nil {
-			return DataKey{}, fmt.Errorf("failed to get postings: %w", err)
+		if rv > 0 && dk.ResourceVersion > rv {
+			continue
 		}
-
-		pIter := postings.Iterator(false, false, false, nil)
-		for {
-			posting, err := pIter.Next()
-			if err != nil {
-				return DataKey{}, fmt.Errorf("failed to iterate postings: %w", err)
-			}
-			if posting == nil {
-				break
-			}
-
-			dk, err := dataKeyFromSegment(reader, posting.Number())
-			if err != nil {
-				return DataKey{}, err
-			}
-
-			// Skip deleted.
-			if dk.Action == DataActionDeleted {
-				continue
-			}
-			// If rv > 0, skip versions newer than the target.
-			if rv > 0 && dk.ResourceVersion > rv {
-				continue
-			}
-			// Keep the highest qualifying rv.
-			if !found || dk.ResourceVersion > best.ResourceVersion {
-				best = dk
-				found = true
-			}
+		if !found || dk.ResourceVersion > best.ResourceVersion {
+			best = dk
+			found = true
 		}
 	}
 
