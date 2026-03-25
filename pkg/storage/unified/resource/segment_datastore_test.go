@@ -5,15 +5,26 @@ import (
 	"testing"
 )
 
-func TestSegmentDataStore(t *testing.T) {
-	t.Skip("segment datastore methods not yet implemented")
-
-	tests := []struct {
+func TestIntegrationSegmentDataStore(t *testing.T) {
+	implemented := []struct {
 		name string
 		fn   func(*testing.T, context.Context, DataStore)
 	}{
 		{"Save_And_Get", testDataStoreSaveAndGet},
 		{"Delete", testDataStoreDelete},
+	}
+
+	for _, tt := range implemented {
+		t.Run(tt.name, func(t *testing.T) {
+			ds := setupTestSegmentDataStore(t)
+			tt.fn(t, t.Context(), ds)
+		})
+	}
+
+	notImplemented := []struct {
+		name string
+		fn   func(*testing.T, context.Context, DataStore)
+	}{
 		{"List", testDataStoreList},
 		{"Keys", testDataStoreKeys},
 		{"LastResourceVersion", testDataStoreLastResourceVersion},
@@ -32,10 +43,9 @@ func TestSegmentDataStore(t *testing.T) {
 		{"BatchGet", testDataStoreBatchGet},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range notImplemented {
 		t.Run(tt.name, func(t *testing.T) {
-			ds := setupTestSegmentDataStore(t)
-			tt.fn(t, t.Context(), ds)
+			t.Skip("not yet implemented")
 		})
 	}
 }
