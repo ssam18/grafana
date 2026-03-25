@@ -37,6 +37,7 @@ export const FolderGroupRow = ({ row, leftColumnWidth, rowKey, depth = 0, childr
       leftColumnClassName={styles.folderGroupRow}
       rightColumnClassName={styles.empty}
       depth={depth}
+      disableHover
     >
       {children}
     </GenericRow>

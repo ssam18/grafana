@@ -9,6 +9,9 @@ import { IconButton, Stack, useStyles2 } from '@grafana/ui';
 import { Spacer } from '../../components/Spacer';
 import { useWorkbenchContext } from '../WorkbenchContext';
 
+// Width of the md IconButton used as the expand/collapse chevron, in pixels.
+const CHEVRON_WIDTH_PX = 24;
+
 interface GenericRowProps {
   width: number;
   title: ReactNode;
@@ -27,6 +30,7 @@ interface GenericRowProps {
    * Use this for rows whose children should not be auto-expanded (e.g. AlertRuleRow instance list).
    */
   expandable?: boolean;
+  disableHover?: boolean;
 }
 
 export const GenericRow = ({
@@ -42,6 +46,7 @@ export const GenericRow = ({
   depth = 0,
   showIndentBorder = false,
   expandable = true,
+  disableHover = false,
 }: GenericRowProps) => {
   const styles = useStyles2(getStyles);
   const { expandGeneration, collapseGeneration } = useWorkbenchContext();
@@ -83,7 +88,7 @@ export const GenericRow = ({
     <>
       <div
         className={cx(
-          styles.groupItemWrapper(width, depth, showIndentBorder),
+          styles.groupItemWrapper(width, depth, showIndentBorder, disableHover),
           depth > 0 && styles.indented(depth),
           depth > 0 && showIndentBorder && styles.indentBorder
         )}
@@ -121,7 +126,7 @@ const LeftCell = ({ title, metadata = null, actions = null, isOpen = true, onTog
 
   return (
     <Stack direction="row" alignItems="center" gap={0.5}>
-      {onToggle && (
+      {onToggle ? (
         <IconButton
           name={isOpen ? 'angle-down' : 'angle-right'}
           onClick={onToggle}
@@ -130,6 +135,8 @@ const LeftCell = ({ title, metadata = null, actions = null, isOpen = true, onTog
           size="md"
           aria-label={t('alerting.group-wrapper.toggle', 'Toggle group')}
         />
+      ) : (
+        <div className={styles.chevronPlaceholder} />
       )}
       <Stack direction="column" alignItems="flex-start" gap={0} flex={1}>
         <Stack direction="row" alignItems="center" gap={1} width="100%">
@@ -165,13 +172,18 @@ export const getStyles = (theme: GrafanaTheme2) => {
       padding: 5,
       width: '100%',
     }),
-    groupItemWrapper: (width: number, depth: number, showIndentBorder: boolean) => {
+    groupItemWrapper: (width: number, depth: number, showIndentBorder: boolean, disableHover: boolean) => {
       const offsetPx =
         depth > 0 ? depth * 2 * theme.spacing.gridSize + (showIndentBorder ? theme.spacing.gridSize : 0) : 0;
       return css({
         display: 'grid',
         gridTemplateColumns: `${Math.max(0, width - offsetPx)}px auto`,
         gap: theme.spacing(2),
+        ...(!disableHover && {
+          '&:hover': {
+            background: theme.colors.background.secondary,
+          },
+        }),
       });
     },
     indented: (depth: number) =>
@@ -181,6 +193,10 @@ export const getStyles = (theme: GrafanaTheme2) => {
     indentBorder: css({
       borderLeft: `1px solid ${theme.colors.border.weak}`,
       paddingLeft: theme.spacing(1),
+    }),
+    chevronPlaceholder: css({
+      width: CHEVRON_WIDTH_PX,
+      flexShrink: 0,
     }),
   };
 };

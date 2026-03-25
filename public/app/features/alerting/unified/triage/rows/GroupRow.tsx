@@ -47,6 +47,7 @@ export const GroupRow = ({ row, leftColumnWidth, rowKey, depth = 0, children }: 
       leftColumnClassName={styles.groupRow}
       rightColumnClassName={styles.empty}
       depth={depth}
+      disableHover
     >
       {children}
     </GenericRow>

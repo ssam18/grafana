@@ -120,6 +120,7 @@ export function InstanceRow({
           <OpenDrawerButton
             aria-label={t('alerting.triage.open-in-sidebar', 'Open in sidebar')}
             onClick={handleDrawerOpen}
+            text={t('alerting.open-drawer-icon-button.instance-details', 'Instance details')}
           />
         }
         content={

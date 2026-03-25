@@ -2404,7 +2404,9 @@
       "recipient-notification-fires": "Select who should receive a notification when an alert rule fires."
     },
     "open-drawer-icon-button": {
-      "details": "Details"
+      "details": "Details",
+      "instance-details": "Instance details",
+      "rule-details": "Rule details"
     },
     "option-customfield": {
       "label-custom-template": "Custom template",
