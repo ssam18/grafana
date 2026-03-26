@@ -1,5 +1,6 @@
 import { PluginError, PluginMeta, renderMarkdown } from '@grafana/data';
 import { getBackendSrv, isFetchError } from '@grafana/runtime';
+import { getFeatureFlagClient, installPluginMeta, uninstallPluginMeta } from '@grafana/runtime/internal';
 import { accessControlQueryParam } from 'app/core/utils/accessControl';
 import { isVersionGtOrEq } from 'app/core/utils/version';
 
@@ -220,6 +221,14 @@ export async function getProvisionedPlugins(): Promise<ProvisionedPlugin[]> {
 }
 
 export async function installPlugin(id: string, version?: string) {
+  if (getFeatureFlagClient().getBooleanValue('useMTPlugins', false)) {
+    // we should return here but we don't have the K8s settings API for all types of plugins yet
+    // so we need to call the legacy path too if this succeeds
+    // this keeps the UI in sync even when the user refreshes the browser
+    // TODO(@hugohaggmark) return here as soon as we've migrated all plugin types to MT Settings apis
+    await installPluginMeta(id, version);
+  }
+
   // This will install the latest compatible version based on the logic
   // on the backend.
   return await getBackendSrv().post(
@@ -233,6 +242,14 @@ export async function installPlugin(id: string, version?: string) {
 }
 
 export async function uninstallPlugin(id: string) {
+  if (getFeatureFlagClient().getBooleanValue('useMTPlugins', false)) {
+    // we should return here but we don't have the K8s settings API for all types of plugins yet
+    // so we need to call the legacy path too if this succeeds
+    // this keeps the UI in sync even when the user refreshes the browser
+    // TODO(@hugohaggmark) return here as soon as we've migrated all plugin types to MT Settings apis
+    await uninstallPluginMeta(id);
+  }
+
   return await getBackendSrv().post(`${API_ROOT}/${id}/uninstall`);
 }
 
