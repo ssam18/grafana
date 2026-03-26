@@ -1,6 +1,6 @@
 import { css } from '@emotion/css';
 import { useBooleanFlagValue } from '@openfeature/react-sdk';
-import { FormEvent, ReactNode } from 'react';
+import { FormEvent } from 'react';
 
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { Trans, t } from '@grafana/i18n';
@@ -11,6 +11,8 @@ import { TagFilter, TermCount } from 'app/core/components/TagFilter/TagFilter';
 import { contextSrv } from 'app/core/services/context_srv';
 
 import { SearchLayout, SearchState } from '../../types';
+
+import { OwnersFilter } from './OwnersFilter';
 
 function getLayoutOptions() {
   return [
@@ -39,7 +41,7 @@ interface ActionRowProps {
   onPanelTypeChange: (pt?: string) => void;
   onSetIncludePanels: (v: boolean) => void;
   onCreatedByChange?: (createdBy?: string) => void;
-  additionalFilters?: ReactNode;
+  onOwnerReferenceChange?: (ownerReference: string[]) => void;
 }
 
 function getValidQueryLayout(q: SearchState): SearchLayout {
@@ -70,7 +72,7 @@ export const ActionRow = ({
   onPanelTypeChange,
   onSetIncludePanels,
   onCreatedByChange,
-  additionalFilters,
+  onOwnerReferenceChange,
 }: ActionRowProps) => {
   const styles = useStyles2(getStyles);
 
@@ -97,7 +99,9 @@ export const ActionRow = ({
   return (
     <Stack justifyContent="space-between" alignItems="center" wrap={true}>
       <Stack alignItems="center">
-        {additionalFilters}
+        {config.featureToggles.teamFolders && onOwnerReferenceChange && (
+          <OwnersFilter ownerReference={state.ownerReference ?? []} onChange={onOwnerReferenceChange} />
+        )}
         <TagFilter isClearable={false} tags={state.tag} tagOptions={getTagOptions} onChange={onTagFilterChange} />
         {config.featureToggles.panelTitleSearch && (
           <Checkbox
