@@ -1,5 +1,3 @@
-import { HttpResponse, http } from 'msw';
-
 import { setBackendSrv } from '@grafana/runtime';
 import { getCustomSearchHandler } from '@grafana/test-utils/handlers';
 import server, { setupMockServer } from '@grafana/test-utils/server';
@@ -104,29 +102,39 @@ describe('Unified Storage Searcher', () => {
     // expect(response.view.get(1).description).toBe('foobar');
   });
 
-  it('should include ownerReference filters in the search request', async () => {
-    let capturedOwnerReferences: string[] = [];
-
+  it('should filter search results by ownerReference', async () => {
     server.use(
-      http.get('/apis/dashboard.grafana.app/v0alpha1/namespaces/:namespace/search', ({ request }) => {
-        const url = new URL(request.url);
-        capturedOwnerReferences = url.searchParams.getAll('ownerReference');
-
-        return HttpResponse.json({
-          totalHits: 0,
-          hits: [],
-        });
-      })
+      getCustomSearchHandler([
+        {
+          name: 'team-owned-dashboard',
+          title: 'Team owned dashboard',
+          resource: 'dashboard',
+          ownerReferences: ['iam.grafana.app/Team/team-a'],
+        },
+        {
+          name: 'other-team-dashboard',
+          title: 'Other team dashboard',
+          resource: 'dashboard',
+          ownerReferences: ['iam.grafana.app/Team/team-b'],
+        },
+        {
+          name: 'unowned-dashboard',
+          title: 'Unowned dashboard',
+          resource: 'dashboard',
+        },
+      ])
     );
 
     const searcher = new UnifiedSearcher(mockFallbackSearcher);
 
-    await searcher.search({
+    const response = await searcher.search({
       query: '*',
       ownerReference: ['iam.grafana.app/Team/team-a', 'iam.grafana.app/Team/test-team'],
     });
 
-    expect(capturedOwnerReferences).toEqual(['iam.grafana.app/Team/team-a', 'iam.grafana.app/Team/test-team']);
+    expect(response.view.length).toBe(1);
+    expect(response.view.get(0).name).toBe('Team owned dashboard');
+    expect(response.view.get(0).uid).toBe('team-owned-dashboard');
   });
 });
 
