@@ -101,6 +101,7 @@ export type EventTrackingNamespace = 'manage_dashboards' | 'dashboard_search';
 export interface SearchState {
   query: string;
   tag: string[];
+  ownerReference?: string[];
   starred: boolean;
   explain?: boolean; // adds debug info
   datasource?: string;
@@ -129,6 +130,7 @@ export interface SearchQueryParams {
   sort?: string | null;
   starred?: boolean | null;
   tag?: string[] | null;
+  ownerReference?: string[] | null;
   layout?: SearchLayout | null;
   folder?: string | null;
   createdBy?: string | null;

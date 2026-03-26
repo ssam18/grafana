@@ -1,3 +1,5 @@
+import { HttpResponse, http } from 'msw';
+
 import { setBackendSrv } from '@grafana/runtime';
 import { getCustomSearchHandler } from '@grafana/test-utils/handlers';
 import server, { setupMockServer } from '@grafana/test-utils/server';
@@ -100,6 +102,31 @@ describe('Unified Storage Searcher', () => {
     //  properly these expects should work
     // expect(response.view.get(0).description).toBe(null);
     // expect(response.view.get(1).description).toBe('foobar');
+  });
+
+  it('should include ownerReference filters in the search request', async () => {
+    let capturedOwnerReferences: string[] = [];
+
+    server.use(
+      http.get('/apis/dashboard.grafana.app/v0alpha1/namespaces/:namespace/search', ({ request }) => {
+        const url = new URL(request.url);
+        capturedOwnerReferences = url.searchParams.getAll('ownerReference');
+
+        return HttpResponse.json({
+          totalHits: 0,
+          hits: [],
+        });
+      })
+    );
+
+    const searcher = new UnifiedSearcher(mockFallbackSearcher);
+
+    await searcher.search({
+      query: '*',
+      ownerReference: ['iam.grafana.app/Team/team-a', 'iam.grafana.app/Team/test-team'],
+    });
+
+    expect(capturedOwnerReferences).toEqual(['iam.grafana.app/Team/team-a', 'iam.grafana.app/Team/test-team']);
   });
 });
 

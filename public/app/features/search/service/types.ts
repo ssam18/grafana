@@ -27,6 +27,7 @@ export interface SearchQuery {
   ds_uid?: string;
   ds_type?: string;
   tags?: string[];
+  ownerReference?: string[];
   kind?: string[];
   panel_type?: string;
   createdBy?: string;

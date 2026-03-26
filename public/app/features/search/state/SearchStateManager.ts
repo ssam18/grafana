@@ -21,6 +21,7 @@ import { parseRouteParams } from '../utils';
 export const initialState: SearchState = {
   query: '',
   tag: [],
+  ownerReference: [],
   starred: false,
   layout: SearchLayout.Folders,
   sort: undefined,
@@ -35,6 +36,7 @@ export const defaultQueryParams: SearchQueryParams = {
   starred: null,
   query: null,
   tag: null,
+  ownerReference: null,
   layout: null,
   createdBy: null,
 };
@@ -58,7 +60,13 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
     const stateFromUrl = parseRouteParams(locationService.getSearchObject());
 
     // Force list view when conditions are specified from the URL
-    if (stateFromUrl.query || stateFromUrl.datasource || stateFromUrl.panel_type || stateFromUrl.createdBy) {
+    if (
+      stateFromUrl.query ||
+      stateFromUrl.datasource ||
+      stateFromUrl.panel_type ||
+      stateFromUrl.createdBy ||
+      stateFromUrl.ownerReference?.length
+    ) {
       stateFromUrl.layout = SearchLayout.List;
     }
 
@@ -95,6 +103,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
     this.updateLocation({
       query: this.state.query.length === 0 ? null : this.state.query,
       tag: this.state.tag,
+      ownerReference: this.state.ownerReference?.length ? this.state.ownerReference : null,
       datasource: this.state.datasource,
       panel_type: this.state.panel_type,
       createdBy: this.state.createdBy ?? null,
@@ -122,6 +131,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       query: '',
       datasource: undefined,
       tag: [],
+      ownerReference: [],
       panel_type: undefined,
       createdBy: undefined,
       starred: undefined,
@@ -139,6 +149,10 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
 
   onTagFilterChange = (tags: string[]) => {
     this.setStateAndDoSearch({ tag: tags });
+  };
+
+  onOwnerReferenceChange = (ownerReference: string[]) => {
+    this.setStateAndDoSearch({ ownerReference });
   };
 
   onAddTag = (newTag: string) => {
@@ -211,6 +225,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
     return Boolean(
       this.state.query ||
         this.state.tag.length ||
+        this.state.ownerReference?.length ||
         this.state.starred ||
         this.state.panel_type ||
         this.state.createdBy ||
@@ -224,6 +239,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
     const q: SearchQuery = {
       query: this.state.query,
       tags: this.state.tag,
+      ownerReference: this.state.ownerReference,
       ds_uid: this.state.datasource,
       panel_type: this.state.panel_type,
       createdBy: this.state.createdBy,
@@ -265,6 +281,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       sortValue: this.state.sort,
       query: this.state.query,
       tagCount: this.state.tag?.length,
+      ownerReference: Boolean(this.state.ownerReference?.length),
       includePanels: this.state.includePanels,
       deleted: this.state.deleted,
       createdBy: !!this.state.createdBy,
@@ -318,6 +335,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       sortValue: this.state.sort,
       query: this.state.query,
       tagCount: this.state.tag?.length,
+      ownerReference: Boolean(this.state.ownerReference?.length),
       includePanels: this.state.includePanels,
       deleted: this.state.deleted,
       createdBy: !!this.state.createdBy,
@@ -334,6 +352,7 @@ export class SearchStateManager extends StateManagerBase<SearchState> {
       sortValue: this.state.sort,
       query: this.state.query,
       tagCount: this.state.tag?.length,
+      ownerReference: Boolean(this.state.ownerReference?.length),
       includePanels: this.state.includePanels,
       deleted: this.state.deleted,
       createdBy: !!this.state.createdBy,

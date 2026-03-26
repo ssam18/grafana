@@ -1,6 +1,6 @@
 import { css } from '@emotion/css';
 import { useBooleanFlagValue } from '@openfeature/react-sdk';
-import { FormEvent } from 'react';
+import { FormEvent, ReactNode } from 'react';
 
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { Trans, t } from '@grafana/i18n';
@@ -39,14 +39,15 @@ interface ActionRowProps {
   onPanelTypeChange: (pt?: string) => void;
   onSetIncludePanels: (v: boolean) => void;
   onCreatedByChange?: (createdBy?: string) => void;
+  additionalFilters?: ReactNode;
 }
 
-export function getValidQueryLayout(q: SearchState): SearchLayout {
+function getValidQueryLayout(q: SearchState): SearchLayout {
   const layout = q.layout ?? SearchLayout.Folders;
 
   // Folders is not valid when a query exists
   if (layout === SearchLayout.Folders) {
-    if (q.query || q.sort || q.starred || q.tag.length > 0 || q.createdBy) {
+    if (q.query || q.sort || q.starred || q.tag.length > 0 || q.createdBy || q.ownerReference?.length) {
       return SearchLayout.List;
     }
   }
@@ -69,6 +70,7 @@ export const ActionRow = ({
   onPanelTypeChange,
   onSetIncludePanels,
   onCreatedByChange,
+  additionalFilters,
 }: ActionRowProps) => {
   const styles = useStyles2(getStyles);
 
@@ -79,7 +81,13 @@ export const ActionRow = ({
 
   // Disabled folder layout option when query is present
   const disabledOptions =
-    state.tag.length || state.starred || state.query || state.datasource || state.panel_type || state.createdBy
+    state.tag.length ||
+    state.ownerReference?.length ||
+    state.starred ||
+    state.query ||
+    state.datasource ||
+    state.panel_type ||
+    state.createdBy
       ? [SearchLayout.Folders]
       : [];
 
@@ -89,6 +97,7 @@ export const ActionRow = ({
   return (
     <Stack justifyContent="space-between" alignItems="center" wrap={true}>
       <Stack alignItems="center">
+        {additionalFilters}
         <TagFilter isClearable={false} tags={state.tag} tagOptions={getTagOptions} onChange={onTagFilterChange} />
         {config.featureToggles.panelTitleSearch && (
           <Checkbox

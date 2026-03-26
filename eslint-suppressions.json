@@ -2693,9 +2693,6 @@
     }
   },
   "public/app/features/search/utils.ts": {
-    "@typescript-eslint/consistent-type-assertions": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 3
     }

@@ -11,7 +11,7 @@ export const hasFilters = (query: SearchState) => {
   if (!query) {
     return false;
   }
-  return Boolean(query.query || query.tag?.length > 0 || query.starred || query.sort);
+  return Boolean(query.query || query.tag?.length > 0 || query.ownerReference?.length || query.starred || query.sort);
 };
 
 /** Cleans up old local storage values that remembered many open folders */
@@ -44,7 +44,9 @@ export const parseRouteParams = (params: UrlQueryMap) => {
     if (!val) {
       return obj;
     } else if (key === 'tag' && !Array.isArray(val)) {
-      return { ...obj, tag: [val] as string[] };
+      return { ...obj, tag: [val] };
+    } else if (key === 'ownerReference' && !Array.isArray(val)) {
+      return { ...obj, ownerReference: [val] };
     }
 
     return { ...obj, [key]: val };
