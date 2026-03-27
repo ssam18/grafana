@@ -10,7 +10,7 @@ import { GrafanaTheme2 } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
 import { t } from '@grafana/i18n';
 import { reportInteraction } from '@grafana/runtime';
-import { EmptyState, getAnimatedBorderStyles, Icon, useStyles2 } from '@grafana/ui';
+import { EmptyState, Icon, LoadingBar, useStyles2 } from '@grafana/ui';
 
 import { KBarResults } from './KBarResults';
 import { KBarSearch } from './KBarSearch';
@@ -38,7 +38,6 @@ export function CommandPalette() {
 function CommandPaletteContents() {
   const lateralSpace = getCommandPalettePosition();
   const styles = useStyles2(getSearchStyles, lateralSpace);
-  const animatedBorder = useStyles2(getAnimatedBorderStyles, { variant: 'loading' });
 
   const { query, searchQuery, currentRootActionId } = useKBar((state) => ({
     showing: state.visualState === VisualState.showing,
@@ -74,7 +73,7 @@ function CommandPaletteContents() {
 
   return (
     <KBarPositioner className={styles.positioner}>
-      <KBarAnimator className={cx(styles.animator, { [animatedBorder]: isFetchingSearchResults })}>
+      <KBarAnimator className={styles.animator}>
         <FocusScope contain autoFocus restoreFocus>
           <div {...overlayProps} {...dialogProps}>
             <div className={styles.searchContainer}>
@@ -84,9 +83,12 @@ function CommandPaletteContents() {
                 defaultPlaceholder={t('command-palette.search-box.placeholder', 'Search or jump to...')}
                 className={styles.search}
               />
+              <div className={styles.loadingBarContainer}>
+                {isFetchingSearchResults && <LoadingBar width={500} delay={0} />}
+              </div>
             </div>
             {scopesRow ? <div className={styles.searchContainer}>{scopesRow}</div> : null}
-            <div className={cx({ [styles.resultsContainer]: searchResults.length > 0 })}>
+            <div className={styles.resultsContainer}>
               <RenderResults
                 isFetchingSearchResults={isFetchingSearchResults}
                 searchResults={searchResults}
@@ -252,6 +254,12 @@ const getSearchStyles = (theme: GrafanaTheme2, lateralSpace: number) => {
         maxWidth: 'unset',
         width: 'unset',
       },
+    }),
+    loadingBarContainer: css({
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
     }),
     searchContainer: css({
       alignItems: 'center',
