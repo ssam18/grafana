@@ -142,6 +142,7 @@ export const TimeSeriesPanel = ({
       annotationLanes={options.annotations?.multiLane ? getXAnnotationFrames(data.annotations).length : undefined}
     >
       {(uplotConfig, alignedFrame) => {
+        console.log('top level config change!', uplotConfig, alignedFrame);
         return (
           <>
             {!options.disableKeyboardEvents && <KeyboardPlugin config={uplotConfig} />}
@@ -162,10 +163,11 @@ export const TimeSeriesPanel = ({
                 getDataLinks={(seriesIdx, dataIdx) =>
                   alignedFrame.fields[seriesIdx].getLinks?.({ valueRowIndex: dataIdx }) ?? []
                 }
-                render={(u, dataIdxs, seriesIdx, isPinned = false, dismiss, timeRange2, viaSync, dataLinks) => {
-                  if (enableAnnotationCreation && timeRange2 != null) {
-                    setNewAnnotationRange(timeRange2);
-                    dismiss();
+                render={(u, dataIdxs, seriesIdx, isPinned = false, dismiss, annotationRange, viaSync, dataLinks) => {
+                  console.log('[TimeSeriesPanel]::[TooltipPlugin2::render]', annotationRange);
+                  if (enableAnnotationCreation && annotationRange != null) {
+                    setNewAnnotationRange(annotationRange);
+                    dismiss(u);
                     return;
                   }
 
@@ -173,7 +175,7 @@ export const TimeSeriesPanel = ({
                     let xVal = u.posToVal(u.cursor.left!, 'x');
 
                     setNewAnnotationRange({ from: xVal, to: xVal });
-                    dismiss();
+                    dismiss(u);
                   };
 
                   const groupingFilters =

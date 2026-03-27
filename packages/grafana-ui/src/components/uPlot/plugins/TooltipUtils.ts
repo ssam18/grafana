@@ -3,16 +3,14 @@ import { DashboardCursorSync } from '@grafana/schema';
 
 import { AdHocFilterModel } from '../../VizTooltip/VizTooltipFooter';
 
-import { TimeRange2 } from './TooltipPlugin2';
 import { LocalMutatableVars } from './types';
 
-export function initMutatableVars(isPinned: boolean, syncMode: DashboardCursorSync | undefined): LocalMutatableVars {
+export function initMutatableVars(syncMode: DashboardCursorSync | undefined): LocalMutatableVars {
   let yDrag = false;
 
   let offsetX = 0;
   let offsetY = 0;
 
-  let selectedRange: TimeRange2 | null = null;
   let seriesIdxs: Array<number | null> = [];
   let closestSeriesIdx: number | null = null;
   let viaSync = false;
@@ -29,8 +27,6 @@ export function initMutatableVars(isPinned: boolean, syncMode: DashboardCursorSy
 
   let yZoomed = false;
   let _someSeriesIdx = false;
-  let _isPinned = isPinned;
-
   let plotVisible = false;
 
   // Window vars
@@ -43,7 +39,6 @@ export function initMutatableVars(isPinned: boolean, syncMode: DashboardCursorSy
     yDrag,
     offsetX,
     offsetY,
-    selectedRange,
     seriesIdxs,
     closestSeriesIdx,
     viaSync,
@@ -54,7 +49,6 @@ export function initMutatableVars(isPinned: boolean, syncMode: DashboardCursorSy
     pendingPinned,
     yZoomed,
     _someSeriesIdx,
-    _isPinned,
     plotVisible,
     scrollbarWidth,
     winWid,

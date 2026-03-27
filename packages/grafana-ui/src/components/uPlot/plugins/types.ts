@@ -11,7 +11,6 @@ export interface LocalConsts {
 }
 
 export interface LocalMutatableVars {
-  selectedRange: TimeRange2 | null;
   yDrag: boolean;
   offsetX: number;
   offsetY: number;
@@ -21,11 +20,9 @@ export interface LocalMutatableVars {
   dataLinks: LinkModel[];
   adHocFilters: AdHocFilterModel[];
   persistentLinks: LinkModel[][];
-  pendingRender: boolean;
   pendingPinned: boolean;
   yZoomed: boolean;
   _someSeriesIdx: boolean;
-  _isPinned: boolean;
   plotVisible: boolean;
   scrollbarWidth: number;
   winWid: number;
