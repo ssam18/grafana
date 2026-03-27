@@ -1,6 +1,6 @@
 import { css, cx } from '@emotion/css';
-import { useLayoutEffect, useRef, useReducer, CSSProperties } from 'react';
 import * as React from 'react';
+import { CSSProperties, useLayoutEffect, useReducer, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import uPlot from 'uplot';
 
@@ -10,7 +10,7 @@ import { DashboardCursorSync } from '@grafana/schema';
 import { usePlotConfigHook } from '../../../../../../public/app/plugins/panel/timeseries/hooks/usePlotConfigHook';
 import { AdHocFilterModel } from '../../../internal';
 import { useStyles2 } from '../../../themes/ThemeContext';
-import { RangeSelection1D, RangeSelection2D, OnSelectRangeCallback } from '../../PanelChrome';
+import { OnSelectRangeCallback, RangeSelection1D, RangeSelection2D } from '../../PanelChrome';
 import { getPortalContainer } from '../../Portal/Portal';
 import { UPlotConfigBuilder } from '../config/UPlotConfigBuilder';
 
@@ -137,89 +137,7 @@ export const TooltipPlugin2 = ({
     portalRoot.current = getPortalContainer();
   }
 
-  const [{ isHovering, isPinned, contents, style }, setState] = useReducer(mergeState, null, initState);
-
-  const sizeRef = useRef<TooltipContainerSize | undefined>(undefined);
-  const styles = useStyles2(getStyles, maxWidth);
-
-  const renderRef = useRef(render);
-  renderRef.current = render;
-
-  const getLinksRef = useRef(getDataLinks);
-  getLinksRef.current = getDataLinks;
-
-  const getAdHocFiltersRef = useRef(getAdHocFilters);
-  getAdHocFiltersRef.current = getAdHocFilters;
-
-  let yDrag = false;
-
-  let offsetX = 0;
-  let offsetY = 0;
-
-  let selectedRange: TimeRange2 | null = null;
-  let seriesIdxs: Array<number | null> = [];
-  let closestSeriesIdx: number | null = null;
-  let viaSync = false;
-  let dataLinks: LinkModel[] = [];
-  let adHocFilters: AdHocFilterModel[] = [];
-
-  // for onceClick link rendering during mousemoves we use these pre-generated first links or actions
-  // these will be wrong if the titles have interpolation using the hovered *value*
-  // but this should be quite rare. we'll fix it if someone actually encounters this
-  let persistentLinks: LinkModel[][] = [];
-
-  let pendingRender = false;
-  let pendingPinned = false;
-
-  let yZoomed = false;
-  let _isHovering = isHovering;
-  let _someSeriesIdx = false;
-  let _isPinned = isPinned;
-  let _style = style;
-
-  let plotVisible = false;
-
-  const syncTooltip = syncMode === DashboardCursorSync.Tooltip;
-
-  if (syncMode !== DashboardCursorSync.Off && config.scales[0].props.isTime) {
-    config.setCursor({
-      sync: {
-        key: syncScope,
-        scales: ['x', null],
-      },
-    });
-  }
-
-  const scrollbarWidth = 16;
-  let winWid = 0;
-  let winHgt = 0;
-
-  const dismiss = () => {
-    let prevIsPinned = _isPinned;
-    _isPinned = false;
-    _isHovering = false;
-    plot!.setCursor({ left: -10, top: -10 });
-    dataLinks = [];
-    adHocFilters = [];
-
-    scheduleRender(prevIsPinned);
-  };
-
-  // @todo
-  const updateWinSize = () => {
-    _isHovering && !_isPinned && dismiss();
-
-    winWid = window.innerWidth - scrollbarWidth;
-    winHgt = window.innerHeight - scrollbarWidth;
-  };
-
-  updateWinSize();
-
-  const updatePlotVisible = () => {
-    plotVisible =
-      plot!.rect.bottom <= winHgt && plot!.rect.top >= 0 && plot!.rect.left >= 0 && plot!.rect.right <= winWid;
-  };
-
+  // Init uplot
   const plot = usePlotConfigHook(config, 'init', (u) => {
     // detect shiftKey and mutate drag mode from x-only to y-only
     if (clientZoom) {
@@ -274,6 +192,7 @@ export const TooltipPlugin2 = ({
     }
 
     // this handles pinning, 0-width range selection, and one-click
+    // @todo clean up event listener on uplot destruct
     u.over.addEventListener('click', (e) => {
       if (e.target === u.over) {
         if (e.ctrlKey || e.metaKey) {
@@ -310,7 +229,163 @@ export const TooltipPlugin2 = ({
         }
       }
     });
+
+    console.log('plotSet');
   });
+
+  const [{ isHovering, isPinned, contents, style }, setState] = useReducer(mergeState, null, initState);
+
+  const sizeRef = useRef<TooltipContainerSize | undefined>(undefined);
+  const styles = useStyles2(getStyles, maxWidth);
+
+  const renderRef = useRef(render);
+  renderRef.current = render;
+
+  const getLinksRef = useRef(getDataLinks);
+  getLinksRef.current = getDataLinks;
+
+  const getAdHocFiltersRef = useRef(getAdHocFilters);
+  getAdHocFiltersRef.current = getAdHocFilters;
+
+  let yDrag = false;
+
+  let offsetX = 0;
+  let offsetY = 0;
+
+  let selectedRange: TimeRange2 | null = null;
+  let seriesIdxs: Array<number | null> = [];
+  let closestSeriesIdx: number | null = null;
+  let viaSync = false;
+  let dataLinks: LinkModel[] = [];
+  let adHocFilters: AdHocFilterModel[] = [];
+
+  // for onceClick link rendering during mousemoves we use these pre-generated first links or actions
+  // these will be wrong if the titles have interpolation using the hovered *value*
+  // but this should be quite rare. we'll fix it if someone actually encounters this
+  let persistentLinks: LinkModel[][] = [];
+
+  let pendingRender = false;
+  let pendingPinned = false;
+
+  let yZoomed = false;
+  let _isHovering = isHovering;
+  let _someSeriesIdx = false;
+  let _isPinned = isPinned;
+  let _style = style;
+
+  let plotVisible = false;
+
+  const syncTooltip = syncMode === DashboardCursorSync.Tooltip;
+
+  const _render = () => {
+    pendingRender = false;
+
+    if (pendingPinned) {
+      _style = { pointerEvents: _isPinned ? 'all' : 'none' };
+
+      //@ts-expect-error
+      plot.cursor['_lock'] = _isPinned;
+
+      if (_isPinned) {
+        document.addEventListener('mousedown', downEventOutside, true);
+        document.addEventListener('keydown', downEventOutside, true);
+      } else {
+        document.removeEventListener('mousedown', downEventOutside, true);
+        document.removeEventListener('keydown', downEventOutside, true);
+      }
+
+      pendingPinned = false;
+    }
+
+    let state: TooltipContainerState = {
+      style: _style,
+      isPinned: _isPinned,
+      isHovering: _isHovering,
+      contents:
+        _isHovering || selectedRange != null
+          ? renderRef.current(
+              plot!,
+              seriesIdxs,
+              closestSeriesIdx,
+              _isPinned,
+              dismiss,
+              selectedRange,
+              viaSync,
+              _isPinned ? dataLinks : closestSeriesIdx != null ? persistentLinks[closestSeriesIdx] : [],
+              _isPinned ? adHocFilters : []
+            )
+          : null,
+      dismiss,
+    };
+
+    setState(state);
+
+    // TODO: set u.over.style.cursor = 'pointer' if we hovered a oneClick point
+    // else revert to default...but only when the new pointer is different from prev
+
+    selectedRange = null;
+  };
+
+  if (syncMode !== DashboardCursorSync.Off && config.scales[0].props.isTime) {
+    config.setCursor({
+      sync: {
+        key: syncScope,
+        scales: ['x', null],
+      },
+    });
+  }
+
+  const scrollbarWidth = 16;
+  let winWid = 0;
+  let winHgt = 0;
+
+  function dismiss() {
+    if (!plot) {
+      throw new Error('[TooltipPlugin2::dismiss] - plot not initiated!');
+    }
+    let prevIsPinned = _isPinned;
+    _isPinned = false;
+    _isHovering = false;
+    plot.setCursor({ left: -10, top: -10 });
+    dataLinks = [];
+    adHocFilters = [];
+
+    scheduleRender(prevIsPinned);
+  }
+
+  function scheduleRender(setPinned = false) {
+    if (!pendingRender) {
+      // defer unrender for 100ms to reduce flickering in small gaps
+      if (!_isHovering) {
+        setTimeout(_render, 100);
+      } else {
+        queueMicrotask(_render);
+      }
+
+      pendingRender = true;
+    }
+
+    if (setPinned) {
+      pendingPinned = true;
+    }
+  }
+
+  // @todo
+  const updateWinSize = () => {
+    _isHovering && !_isPinned && dismiss();
+
+    winWid = window.innerWidth - scrollbarWidth;
+    winHgt = window.innerHeight - scrollbarWidth;
+  };
+
+  updateWinSize();
+
+  const updatePlotVisible = (plot: uPlot | null) => {
+    if (!plot) {
+      throw new Error('[updatePlotVisible] Plot not initiated!');
+    }
+    plotVisible = plot.rect.bottom <= winHgt && plot.rect.top >= 0 && plot.rect.left >= 0 && plot.rect.right <= winWid;
+  };
 
   // fires on data value hovers/unhovers
   usePlotConfigHook(config, 'setLegend', (u) => {
@@ -469,6 +544,11 @@ export const TooltipPlugin2 = ({
 
   // fires on mousemoves
   usePlotConfigHook(config, 'setCursor', (u) => {
+    if (!sizeRef.current) {
+      console.warn('[TooltipPlugin2::setCursor] sizeRef not defined!');
+      return;
+    }
+
     viaSync = u.cursor.event == null;
 
     if (!_isHovering) {
@@ -483,7 +563,7 @@ export const TooltipPlugin2 = ({
 
       let transform = '';
 
-      let { width, height } = sizeRef.current!;
+      let { width, height } = sizeRef.current;
 
       width += TOOLTIP_OFFSET;
       height += TOOLTIP_OFFSET;
@@ -540,23 +620,6 @@ export const TooltipPlugin2 = ({
     }
   };
 
-  const scheduleRender = (setPinned = false) => {
-    if (!pendingRender) {
-      // defer unrender for 100ms to reduce flickering in small gaps
-      if (!_isHovering) {
-        setTimeout(_render, 100);
-      } else {
-        queueMicrotask(_render);
-      }
-
-      pendingRender = true;
-    }
-
-    if (setPinned) {
-      pendingPinned = true;
-    }
-  };
-
   // in some ways this is similar to ClickOutsideWrapper.tsx
   const downEventOutside = (e: Event) => {
     if (e instanceof KeyboardEvent) {
@@ -577,57 +640,16 @@ export const TooltipPlugin2 = ({
     }
   };
 
-  const _render = () => {
-    pendingRender = false;
-
-    if (pendingPinned) {
-      _style = { pointerEvents: _isPinned ? 'all' : 'none' };
-
-      //@ts-expect-error
-      plot.cursor['_lock'] = _isPinned;
-
-      if (_isPinned) {
-        document.addEventListener('mousedown', downEventOutside, true);
-        document.addEventListener('keydown', downEventOutside, true);
-      } else {
-        document.removeEventListener('mousedown', downEventOutside, true);
-        document.removeEventListener('keydown', downEventOutside, true);
-      }
-
-      pendingPinned = false;
-    }
-
-    let state: TooltipContainerState = {
-      style: _style,
-      isPinned: _isPinned,
-      isHovering: _isHovering,
-      contents:
-        _isHovering || selectedRange != null
-          ? renderRef.current(
-              plot!,
-              seriesIdxs,
-              closestSeriesIdx,
-              _isPinned,
-              dismiss,
-              selectedRange,
-              viaSync,
-              _isPinned ? dataLinks : closestSeriesIdx != null ? persistentLinks[closestSeriesIdx] : [],
-              _isPinned ? adHocFilters : []
-            )
-          : null,
-      dismiss,
-    };
-
-    setState(state);
-
-    // TODO: set u.over.style.cursor = 'pointer' if we hovered a oneClick point
-    // else revert to default...but only when the new pointer is different from prev
-
-    selectedRange = null;
-  };
-
   useLayoutEffect(() => {
     sizeRef.current?.observer.disconnect();
+
+    if (!plot) {
+      // @todo remove debug
+      console.warn('[useLayoutEffect::config] Plot not initiated!');
+      return;
+    }
+
+    console.log('[useLayoutEffect::config] Plot initiated!');
 
     sizeRef.current = {
       width: 0,
@@ -681,7 +703,7 @@ export const TooltipPlugin2 = ({
     }
 
     const onscroll = (e: Event) => {
-      updatePlotVisible();
+      updatePlotVisible(plot);
       _isHovering && e.target instanceof Node && e.target.contains(plot!.root) && dismiss();
     };
 
@@ -698,59 +720,66 @@ export const TooltipPlugin2 = ({
       document.removeEventListener('mousedown', downEventOutside, true);
       document.removeEventListener('keydown', downEventOutside, true);
     };
-  }, [config]);
+  }, [config, plot]);
 
   useLayoutEffect(() => {
-    const size = sizeRef.current!;
+    const size = sizeRef.current;
 
-    if (domRef.current != null) {
-      size.observer.disconnect();
-      size.observer.observe(domRef.current);
+    if (!size) {
+      console.warn('[useLayoutEffect::hover] sizeRef not defined!');
+      return;
+    }
 
-      // since the above observer is attached after container is in DOM, we need to manually update sizeRef
-      // and re-trigger a cursor move to do initial positioning math
-      const { width, height } = domRef.current.getBoundingClientRect();
-      size.width = width;
-      size.height = height;
+    size.width = 0;
+    size.height = 0;
 
-      let event = plot?.cursor.event;
+    if (!domRef.current) {
+      console.warn('[useLayoutEffect::hover] domRef not defined!');
+      return;
+    }
+    size.observer.disconnect();
+    size.observer.observe(domRef.current);
 
-      // if not viaSync, re-dispatch real event
-      if (event != null) {
-        // we expect to re-dispatch mousemove, but may have a different event type, so create a mousemove event and fire that instead
-        // this doesn't work for every mobile device, so fall back to checking the useragent as well
-        const isMobile = event.type !== 'mousemove' || userAgentIsMobile;
+    // since the above observer is attached after container is in DOM, we need to manually update sizeRef
+    // and re-trigger a cursor move to do initial positioning math
+    const { width, height } = domRef.current.getBoundingClientRect();
+    size.width = width;
+    size.height = height;
 
-        if (isMobile) {
-          event = new MouseEvent('mousemove', {
-            view: window,
-            bubbles: true,
-            cancelable: true,
-            clientX: event.clientX,
-            clientY: event.clientY,
-            screenX: event.screenX,
-            screenY: event.screenY,
-          });
-        }
+    let event = plot?.cursor.event;
 
-        // this works around the fact that uPlot does not unset cursor.event (for perf reasons)
-        // so if the last real mouse event was mouseleave and you manually trigger u.setCursor()
-        // it would end up re-dispatching mouseleave
-        const isStaleEvent = isMobile ? false : performance.now() - event.timeStamp > 16;
+    // if not viaSync, re-dispatch real event
+    if (event != null) {
+      // we expect to re-dispatch mousemove, but may have a different event type, so create a mousemove event and fire that instead
+      // this doesn't work for every mobile device, so fall back to checking the useragent as well
+      const isMobile = event.type !== 'mousemove' || userAgentIsMobile;
 
-        !isStaleEvent && plot?.over.dispatchEvent(event);
-      } else {
-        plot?.setCursor(
-          {
-            left: plot.cursor.left!,
-            top: plot.cursor.top!,
-          },
-          true
-        );
+      if (isMobile) {
+        event = new MouseEvent('mousemove', {
+          view: window,
+          bubbles: true,
+          cancelable: true,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          screenX: event.screenX,
+          screenY: event.screenY,
+        });
       }
+
+      // this works around the fact that uPlot does not unset cursor.event (for perf reasons)
+      // so if the last real mouse event was mouseleave and you manually trigger u.setCursor()
+      // it would end up re-dispatching mouseleave
+      const isStaleEvent = isMobile ? false : performance.now() - event.timeStamp > 16;
+
+      !isStaleEvent && plot?.over.dispatchEvent(event);
     } else {
-      size.width = 0;
-      size.height = 0;
+      plot?.setCursor(
+        {
+          left: plot.cursor.left!,
+          top: plot.cursor.top!,
+        },
+        true
+      );
     }
   }, [isHovering]);
 
