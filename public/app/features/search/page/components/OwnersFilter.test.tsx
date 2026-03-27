@@ -1,8 +1,8 @@
-import { HttpResponse, http } from 'msw';
 import { comboboxTestSetup } from 'test/helpers/comboboxTestSetup';
 import { render, screen } from 'test/test-utils';
 
 import { setBackendSrv } from '@grafana/runtime';
+import { getSignedInUserTeamsHandler } from '@grafana/test-utils/handlers';
 import server, { setupMockServer } from '@grafana/test-utils/server';
 import { backendSrv } from 'app/core/services/backend_srv';
 
@@ -15,12 +15,10 @@ comboboxTestSetup();
 describe('OwnersFilter', () => {
   beforeEach(() => {
     server.use(
-      http.get('/api/user/teams', () => {
-        return HttpResponse.json([
-          { id: 1, uid: 'team-a', name: 'Team A', avatarUrl: '' },
-          { id: 2, uid: 'test-team', name: 'Test Team', avatarUrl: '' },
-        ]);
-      })
+      getSignedInUserTeamsHandler([
+        { id: 1, uid: 'team-a', name: 'Team A', avatarUrl: '' },
+        { id: 2, uid: 'test-team', name: 'Test Team', avatarUrl: '' },
+      ])
     );
   });
 
