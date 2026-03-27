@@ -358,7 +358,7 @@ export function PanelChrome({
           isPanelTransparent && styles.panelTransparent,
           isSelected && 'dashboard-selected-element',
           !isSelected && isSelectable && selectableHighlight && 'dashboard-selectable-element',
-          { [animatedBorder]: loadingState === LoadingState.Loading }
+          loadingState === LoadingState.Loading && animatedBorder
         )}
         style={containerStyles}
         aria-labelledby={!!title ? panelTitleId : undefined}

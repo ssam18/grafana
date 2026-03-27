@@ -36,11 +36,7 @@ export { ButtonCascader } from './components/ButtonCascader/ButtonCascader';
 export { InlineToast } from './components/InlineToast/InlineToast';
 export { LoadingPlaceholder, type LoadingPlaceholderProps } from './components/LoadingPlaceholder/LoadingPlaceholder';
 export { LoadingBar, type LoadingBarProps } from './components/LoadingBar/LoadingBar';
-export {
-  getAnimatedBorderStyles,
-  type AnimatedBorderVariant,
-  type AnimatedBorderOptions,
-} from './utils/animatedBorder';
+export { getAnimatedBorderStyles } from './utils/animatedBorder';
 export { ColorPicker, SeriesColorPicker } from './components/ColorPicker/ColorPicker';
 export { ColorPickerInput } from './components/ColorPicker/ColorPickerInput';
 export {
