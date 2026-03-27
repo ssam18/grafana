@@ -6,7 +6,7 @@ import { SearchLayout, SearchState } from 'app/features/search/types';
 import { BrowseFilters } from './BrowseFilters';
 
 const mockUseSearchStateManager = jest.fn();
-const mockGetSignedInUserTeamListQuery = jest.fn();
+const mockSearchTeamsQuery = jest.fn();
 const mockGetSortOptions = jest.fn().mockResolvedValue([]);
 
 jest.mock('app/features/search/state/SearchStateManager', () => ({
@@ -26,7 +26,7 @@ jest.mock('app/api/clients/legacy', () => ({
     reducer: (state = {}) => state,
     middleware: () => (next: (action: unknown) => unknown) => (action: unknown) => next(action),
   },
-  useGetSignedInUserTeamListQuery: (...args: unknown[]) => mockGetSignedInUserTeamListQuery(...args),
+  useSearchTeamsQuery: (...args: unknown[]) => mockSearchTeamsQuery(...args),
 }));
 
 jest.mock('app/core/services/context_srv', () => ({
@@ -66,11 +66,13 @@ describe('BrowseFilters', () => {
   testWithFeatureToggles({ enable: ['teamFolders', 'unifiedStorageSearchUI'] });
 
   beforeEach(() => {
-    mockGetSignedInUserTeamListQuery.mockReturnValue({
-      data: [
-        { uid: 'team-a', name: 'Team A', avatarUrl: '' },
-        { uid: 'test-team', name: 'Test Team', avatarUrl: '' },
-      ],
+    mockSearchTeamsQuery.mockReturnValue({
+      data: {
+        teams: [
+          { uid: 'team-a', name: 'Team A', avatarUrl: '' },
+          { uid: 'test-team', name: 'Test Team', avatarUrl: '' },
+        ],
+      },
       isLoading: false,
     });
   });

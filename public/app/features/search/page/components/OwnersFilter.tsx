@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { GrafanaTheme2, SelectableValue } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { Icon, MultiSelect, useStyles2 } from '@grafana/ui';
-import { useGetSignedInUserTeamListQuery } from 'app/api/clients/legacy';
+import { useSearchTeamsQuery } from 'app/api/clients/legacy';
 import { teamOwnerRef } from 'app/features/browse-dashboards/utils/dashboards';
 
 const ALL_TEAMS_VALUE = '__all-teams__';
@@ -17,17 +17,20 @@ interface OwnersFilterProps {
 
 export function OwnersFilter({ ownerReference, onChange }: OwnersFilterProps) {
   const styles = useStyles2(getStyles);
-  const { data: teams = [], isLoading } = useGetSignedInUserTeamListQuery();
+  const { data, isLoading } = useSearchTeamsQuery({ perpage: 100 });
 
   const teamOptions = useMemo<Array<SelectableValue<string>>>(() => {
-    return teams
+    if (!data?.teams) {
+      return [];
+    }
+    return data.teams
       .map((team) => ({
         label: team.name,
         value: teamOwnerRef(team),
         imgUrl: team.avatarUrl,
       }))
       .sort((a, b) => collator.compare(a.label ?? '', b.label ?? ''));
-  }, [teams]);
+  }, [data?.teams]);
 
   const allTeamReferences = useMemo(() => {
     return teamOptions.flatMap((option) => (option.value ? [option.value] : []));

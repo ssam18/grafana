@@ -4,13 +4,6 @@ import { wellFormedTree } from '../../../fixtures/folders';
 import { mockStarredDashboardsMap } from '../../../fixtures/starred';
 const [_, { dashbdD }] = wellFormedTree();
 
-type SignedInUserTeam = {
-  id?: number;
-  uid: string;
-  name: string;
-  avatarUrl?: string;
-};
-
 const getStarsHandler = () =>
   http.get('/api/user/stars', async () => {
     return HttpResponse.json(Array.from(mockStarredDashboardsMap.keys()));
@@ -47,11 +40,6 @@ const getPreferencesHandler = () =>
 const updatePreferencesHandler = () =>
   http.put('/api/user/preferences', async () => {
     return HttpResponse.json({ message: 'Preferences updated' });
-  });
-
-export const getSignedInUserTeamsHandler = (teams: SignedInUserTeam[]) =>
-  http.get('/api/user/teams', async () => {
-    return HttpResponse.json(teams);
   });
 
 const handlers = [
