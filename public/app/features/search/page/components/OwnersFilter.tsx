@@ -10,11 +10,14 @@ import { teamOwnerRef } from 'app/features/browse-dashboards/utils/dashboards';
 const ALL_TEAMS_VALUE = '__all-teams__';
 
 interface OwnersFilterProps {
-  ownerReference: string[];
+  values: string[];
   onChange: (ownerReference: string[]) => void;
 }
 
-export function OwnersFilter({ ownerReference, onChange }: OwnersFilterProps) {
+/**
+ * A filter component that allows selecting multiple existing teams.
+ */
+export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
   const styles = useStyles2(getStyles);
   // At this point we have hard limit for number of items we show. The issue is we are using MultiSelect because of
   // some UX bug (it opens only when clicking on internal input, not the full element) in Combobox but Multiselect
@@ -39,21 +42,25 @@ export function OwnersFilter({ ownerReference, onChange }: OwnersFilterProps) {
     };
   }, []);
 
+  // We go through some hoops here to create a virtual "all teams" item to allow quickly selecting all the teams
+  // in the select.
   const allTeamReferences = useMemo(() => {
     // option.value is UID of the team. This needs to exist always so we should be able to use ! here.
     return teamOptions.map((option) => option.value!);
   }, [teamOptions]);
 
+  // Check if the value prop matches list of all the teams we get from the API
   const hasAllTeamsSelected =
-    ownerReference.length > 0 &&
+    values.length > 0 &&
     allTeamReferences.length > 0 &&
-    ownerReference.length === allTeamReferences.length &&
-    allTeamReferences.every((reference) => ownerReference.includes(reference));
+    values.length === allTeamReferences.length &&
+    allTeamReferences.every((reference) => values.includes(reference));
 
   const value = hasAllTeamsSelected
     ? [allTeamsValue]
-    : teamOptions.filter((option) => option.value && ownerReference.includes(option.value));
+    : teamOptions.filter((option) => option.value && values.includes(option.value));
 
+  // Add "all teams" option if there are some actual teams
   const options = useMemo<Array<SelectableValue<string>>>(() => {
     if (teamOptions.length === 0) {
       return [];
@@ -69,9 +76,8 @@ export function OwnersFilter({ ownerReference, onChange }: OwnersFilterProps) {
         value={value}
         onChange={(selectedOptions) => {
           const values = selectedOptions.map((option) => option.value!);
-          onChange(
-            values.includes(ALL_TEAMS_VALUE) ? allTeamReferences : values.filter((value) => value !== ALL_TEAMS_VALUE)
-          );
+          // We don't send ALL_TEAMS_VALUE upstream, so we map it to actual list of all the teams.
+          onChange(values.includes(ALL_TEAMS_VALUE) ? allTeamReferences : values);
         }}
         noOptionsMessage={t('browse-dashboards.filters.owner-no-options', 'No teams found')}
         loadingMessage={t('browse-dashboards.filters.owner-loading', 'Loading teams...')}

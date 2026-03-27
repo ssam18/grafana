@@ -91,7 +91,7 @@ export const ActionRow = ({
       <Stack alignItems="center">
         <TagFilter isClearable={false} tags={state.tag} tagOptions={getTagOptions} onChange={onTagFilterChange} />
         {config.featureToggles.teamFolders && onOwnerReferenceChange && (
-          <OwnersFilter ownerReference={state.ownerReference ?? []} onChange={onOwnerReferenceChange} />
+          <OwnersFilter values={state.ownerReference ?? []} onChange={onOwnerReferenceChange} />
         )}
         {config.featureToggles.panelTitleSearch && (
           <Checkbox

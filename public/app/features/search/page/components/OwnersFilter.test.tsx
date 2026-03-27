@@ -23,7 +23,7 @@ describe('OwnersFilter', () => {
   });
 
   it('shows the all teams option and fetched teams', async () => {
-    const { user } = render(<OwnersFilter ownerReference={[]} onChange={jest.fn()} />);
+    const { user } = render(<OwnersFilter values={[]} onChange={jest.fn()} />);
 
     await user.click(await screen.findByRole('combobox', { name: 'Owner filter' }));
 
@@ -34,7 +34,7 @@ describe('OwnersFilter', () => {
 
   it('normalizes a team selection into ownerReference values', async () => {
     const onChange = jest.fn();
-    const { user } = render(<OwnersFilter ownerReference={[]} onChange={onChange} />);
+    const { user } = render(<OwnersFilter values={[]} onChange={onChange} />);
 
     await user.click(await screen.findByRole('combobox', { name: 'Owner filter' }));
     await user.click(await screen.findByText('Team A'));
@@ -44,7 +44,7 @@ describe('OwnersFilter', () => {
 
   it('normalizes the all teams option into all ownerReference values', async () => {
     const onChange = jest.fn();
-    const { user } = render(<OwnersFilter ownerReference={[]} onChange={onChange} />);
+    const { user } = render(<OwnersFilter values={[]} onChange={onChange} />);
 
     await user.click(await screen.findByRole('combobox', { name: 'Owner filter' }));
     await user.click(await screen.findByText('All teams'));
