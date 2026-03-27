@@ -27,7 +27,7 @@ export const cleanupOldExpandedFolders = () => {
 };
 
 /**
- * Get storage key for a dashboard folder by its title
+ * Get a storage key for a dashboard folder by its title
  * @param title
  */
 export const getSectionStorageKey = (title = 'General') => {
@@ -37,7 +37,6 @@ export const getSectionStorageKey = (title = 'General') => {
 /**
  * Remove undefined keys from url params object and format non-primitive values
  * @param params
- * @param folder
  */
 export const parseRouteParams = (params: UrlQueryMap) => {
   const cleanedParams = Object.entries(params).reduce<Partial<SearchState>>((obj, [key, val]) => {
@@ -63,8 +62,9 @@ export const parseRouteParams = (params: UrlQueryMap) => {
   return { ...cleanedParams };
 };
 
-// If we have filter, we can only show the results in the list layout as the tree layout does not work well
-// with filtering.
+/**
+ * If we have filter, we can only show the results in the list layout as the tree layout does not work well
+ */
 export function needsListLayout(q: Partial<SearchState>) {
   return q.query || q.sort || q.starred || q.tag?.length || q.createdBy || q.ownerReference?.length || q.panel_type;
 }
