@@ -249,6 +249,7 @@ export { ToolbarButton } from './components/ToolbarButton/ToolbarButton';
 export { ToolbarButtonRow } from './components/ToolbarButton/ToolbarButtonRow';
 export { ValuePicker } from './components/ValuePicker/ValuePicker';
 export { fieldMatchersUI } from './components/MatchersUI/fieldMatchersUI';
+export { getPickerFieldMatchers } from './components/MatchersUI/utils';
 export {
   MatcherScopeSelector,
   getUniqueMatcherScopes,
