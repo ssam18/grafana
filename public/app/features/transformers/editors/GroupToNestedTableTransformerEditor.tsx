@@ -28,6 +28,7 @@ import { config } from '@grafana/runtime';
 import {
   Alert,
   Button,
+  Combobox,
   Field,
   fieldMatchersUI,
   getPickerFieldMatchers,
@@ -37,6 +38,7 @@ import {
   Stack,
   StatsPicker,
   Switch,
+  selectableValueToComboboxOption,
   useTheme2,
 } from '@grafana/ui';
 
@@ -131,35 +133,6 @@ const RuleRow = ({ rule, data, onChange, onDelete }: RuleRowProps) => {
   // Resolve the UI component for the current matcher type
   const matcherUI = fieldMatchersUI.getIfExists(rule.matcher.id) ?? fieldMatchersUI.get(DEFAULT_MATCHER_ID);
 
-  const onMatcherTypeChange = useCallback(
-    (value: SelectableValue<string>) => {
-      onChange({ ...rule, matcher: { id: value.value! } });
-    },
-    [rule, onChange]
-  );
-
-  const onMatcherConfigChange = useCallback(
-    (matcherOption: unknown) => {
-      onChange({ ...rule, matcher: { id: rule.matcher.id, options: matcherOption } });
-    },
-    [rule, onChange]
-  );
-
-  const onOperationChange = useCallback(
-    (value: SelectableValue<GroupByOperationID | null>) => {
-      onChange({ ...rule, operation: value?.value ?? null });
-    },
-    [rule, onChange]
-  );
-
-  const onAggregationsChange = useCallback(
-    (stats: string[]) => {
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      onChange({ ...rule, aggregations: stats as ReducerID[] });
-    },
-    [rule, onChange]
-  );
-
   const operationOptions = [
     {
       label: t('transformers.group-by-field-configuration.options.label.group-by', 'Group by'),
@@ -172,15 +145,17 @@ const RuleRow = ({ rule, data, onChange, onDelete }: RuleRowProps) => {
   ];
 
   return (
-    <Stack gap={0.5} direction="row" wrap={false} alignItems="flex-start">
+    <Stack gap={0.5} direction="row" wrap={false} alignItems="center">
       {/* Matcher type selector */}
       <div className={styles.matcherType}>
-        <Select
-          inputId={matcherSelectId}
-          options={matcherOptions}
+        <Combobox
+          id={matcherSelectId}
+          options={matcherOptions.map(selectableValueToComboboxOption).filter((v) => !!v)}
           value={rule.matcher.id}
-          onChange={onMatcherTypeChange}
-          aria-label={t('transformers.group-to-nested-table-v2.aria-label-matcher-type', 'Select matcher type')}
+          onChange={(value) => {
+            onChange({ ...rule, matcher: { id: value.value } });
+          }}
+          aria-label={t('transformers.group-to-nested-table.aria-label-matcher-type', 'Select matcher type')}
         />
       </div>
 
@@ -191,19 +166,23 @@ const RuleRow = ({ rule, data, onChange, onDelete }: RuleRowProps) => {
           matcher={matcherUI.matcher}
           data={data}
           options={rule.matcher.options}
-          onChange={onMatcherConfigChange}
+          onChange={(matcherOption) => {
+            onChange({ ...rule, matcher: { id: rule.matcher.id, options: matcherOption } });
+          }}
         />
       </div>
 
       {/* Operation selector */}
       <div className={styles.operation}>
-        <Select
+        <Combobox
           options={operationOptions}
           value={rule.operation}
-          placeholder={t('transformers.group-by-field-configuration.placeholder-ignored', 'Ignored')}
-          onChange={onOperationChange}
+          placeholder={t('transformers.group-to-nested-table.placeholder', 'Select operation')}
+          onChange={(value) => {
+            onChange({ ...rule, operation: value?.value ?? null });
+          }}
           isClearable
-          aria-label={t('transformers.group-to-nested-table-v2.aria-label-operation', 'Select operation')}
+          aria-label={t('transformers.group-to-nested-table.aria-label-operation', 'Select operation')}
         />
       </div>
 
@@ -213,16 +192,20 @@ const RuleRow = ({ rule, data, onChange, onDelete }: RuleRowProps) => {
           placeholder={t('transformers.group-by-field-configuration.placeholder-select-stats', 'Select stats')}
           allowMultiple
           stats={rule.aggregations}
-          onChange={onAggregationsChange}
+          onChange={(stats: string[]) => {
+            // StatsPicker should return ReducerID[] but it is typed as string[].
+            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+            onChange({ ...rule, aggregations: stats as ReducerID[] });
+          }}
         />
       )}
 
       {/* Delete button */}
       <IconButton
-        name="times"
+        name="trash-alt"
         onClick={onDelete}
-        tooltip={t('transformers.group-to-nested-table-v2.tooltip-remove-rule', 'Remove rule')}
-        aria-label={t('transformers.group-to-nested-table-v2.aria-label-remove-rule', 'Remove rule')}
+        tooltip={t('transformers.group-to-nested-table.aria-label-remove-rule', 'Remove rule')}
+        aria-label={t('transformers.group-to-nested-table.aria-label-remove-rule', 'Remove rule')}
       />
     </Stack>
   );
@@ -308,7 +291,7 @@ const GroupToNestedTableTransformerEditorV2 = ({ input, options: rawOptions, onC
 
       <div>
         <Button icon="plus" onClick={onAddRule} variant="secondary" size="sm">
-          {t('transformers.group-to-nested-table-v2.button-add-rule', 'Add rule')}
+          {t('transformers.group-to-nested-table.button-add-rule', 'Add rule')}
         </Button>
       </div>
 
