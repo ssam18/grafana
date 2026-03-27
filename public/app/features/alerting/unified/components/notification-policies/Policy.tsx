@@ -1,17 +1,16 @@
-import {css} from '@emotion/css';
-import {isArray, isFinite, sumBy, uniqueId} from 'lodash';
+import { css } from '@emotion/css';
+import { isArray, isFinite, sumBy, uniqueId } from 'lodash';
 import pluralize from 'pluralize';
 import * as React from 'react';
 import { type FC, Fragment, type JSX, type ReactNode, useCallback, useState } from 'react';
-import {useToggle} from 'react-use';
+import { useToggle } from 'react-use';
 
-import {AlertLabel, getInheritedProperties} from '@grafana/alerting';
+import { AlertLabel, getInheritedProperties } from '@grafana/alerting';
 import { type GrafanaTheme2 } from '@grafana/data';
 import { Trans, t } from '@grafana/i18n';
 import {
   Button,
   Dropdown,
-  getTagColorsFromName,
   Icon,
   IconButton,
   Menu,
@@ -19,41 +18,42 @@ import {
   Text,
   TextLink,
   Tooltip,
+  getTagColorsFromName,
   useStyles2,
 } from '@grafana/ui';
 import ConditionalWrap from 'app/features/alerting/unified/components/ConditionalWrap';
 import MoreButton from 'app/features/alerting/unified/components/MoreButton';
-import {PrimaryText} from 'app/features/alerting/unified/components/common/TextVariants';
-import {ContactPointReceiverSummary} from 'app/features/alerting/unified/components/contact-points/ContactPoint';
+import { PrimaryText } from 'app/features/alerting/unified/components/common/TextVariants';
+import { ContactPointReceiverSummary } from 'app/features/alerting/unified/components/contact-points/ContactPoint';
 import { type ReceiversState } from 'app/features/alerting/unified/types/alerting';
 import {
   type AlertmanagerGroup,
   MatcherOperator,
-  ROUTES_META_SYMBOL,
   type ObjectMatcher,
+  ROUTES_META_SYMBOL,
   type Receiver,
   type RouteWithID,
 } from 'app/plugins/datasource/alertmanager/types';
 
-import {AlertmanagerAction, useAlertmanagerAbilities, useAlertmanagerAbility} from '../../hooks/useAbilities';
-import {getAmMatcherFormatter} from '../../utils/alertmanager';
-import {ROOT_ROUTE_NAME} from '../../utils/k8s/constants';
-import {canAdminEntity, canDeleteEntity, canEditEntity, isProvisionedResource} from '../../utils/k8s/utils';
+import { AlertmanagerAction, useAlertmanagerAbilities, useAlertmanagerAbility } from '../../hooks/useAbilities';
+import { getAmMatcherFormatter } from '../../utils/alertmanager';
+import { ROOT_ROUTE_NAME, ROUTES_RESOURCE_TYPE } from '../../utils/k8s/constants';
+import { canAdminEntity, canDeleteEntity, canEditEntity, isProvisionedResource } from '../../utils/k8s/utils';
 import {type MatcherFormatter, normalizeMatchers} from '../../utils/matchers';
-import {createContactPointLink, createContactPointSearchLink, createMuteTimingLink} from '../../utils/misc';
-import {routeAdapter} from '../../utils/routeAdapter';
+import { createContactPointLink, createContactPointSearchLink, createMuteTimingLink } from '../../utils/misc';
+import { routeAdapter } from '../../utils/routeAdapter';
 import { type InsertPosition } from '../../utils/routeTree';
-import {Authorize} from '../Authorize';
-import {PopupCard} from '../HoverCard';
-import {MetaText} from '../MetaText';
-import {ManagePermissionsDrawer} from '../permissions/ManagePermissions';
-import {ProvisioningBadge} from '../Provisioning';
-import {Spacer} from '../Spacer';
-import {GrafanaPoliciesExporter} from '../export/GrafanaPoliciesExporter';
+import { Authorize } from '../Authorize';
+import { PopupCard } from '../HoverCard';
+import { MetaText } from '../MetaText';
+import { ProvisioningBadge } from '../Provisioning';
+import { Spacer } from '../Spacer';
+import { GrafanaPoliciesExporter } from '../export/GrafanaPoliciesExporter';
+import { ManagePermissionsDrawer } from '../permissions/ManagePermissions';
 
-import {Matchers} from './Matchers';
-import {useRoutesMatchingFilters} from './RoutesMatchingFiltersContext';
-import {trackNotificationPolicyExported} from './notificationPolicyAnalytics';
+import { Matchers } from './Matchers';
+import { useRoutesMatchingFilters } from './RoutesMatchingFiltersContext';
+import { trackNotificationPolicyExported } from './notificationPolicyAnalytics';
 import { type TimingOptions } from './timingOptions';
 
 const POLICIES_PER_PAGE = 20;
@@ -448,7 +448,7 @@ const Policy = (props: PolicyComponentProps) => {
       {showExportDrawer && <GrafanaPoliciesExporter routeName={currentRoute.name} onClose={toggleShowExportDrawer} />}
       {showPermissionsDrawer && (
         <ManagePermissionsDrawer
-          resource="routes"
+          resource={ROUTES_RESOURCE_TYPE}
           resourceId={routeMeta?.name ?? ''}
           resourceName={currentRoute.name}
           onClose={() => setShowPermissionsDrawer(false)}
@@ -636,9 +636,7 @@ export const useCreateDropdownMenuActions = (
   const routeMeta = currentRoute[ROUTES_META_SYMBOL];
   const hasK8sMetadata = Boolean(routeMeta?.metadata);
   const hasAbilityToEdit = hasK8sMetadata ? canEditEntity({ metadata: routeMeta?.metadata }) : updatePoliciesAllowed;
-  const hasAbilityToDelete = hasK8sMetadata
-    ? canDeleteEntity({ metadata: routeMeta?.metadata })
-    : deletePolicyAllowed;
+  const hasAbilityToDelete = hasK8sMetadata ? canDeleteEntity({ metadata: routeMeta?.metadata }) : deletePolicyAllowed;
 
   const dropdownMenuActions = [];
   const showExportAction = exportPoliciesAllowed && exportPoliciesSupported && !isAutoGenerated && isDefaultPolicy;

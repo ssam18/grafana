@@ -1,20 +1,20 @@
-import {useState} from 'react';
+import { useState } from 'react';
 
-import {t, Trans} from '@grafana/i18n';
-import {LinkButton, Stack, Tooltip} from '@grafana/ui';
+import { Trans, t } from '@grafana/i18n';
+import { Button, LinkButton, Stack, Tooltip } from '@grafana/ui';
 
 import { ROUTES_META_SYMBOL, type Route } from '../../../../../../plugins/datasource/alertmanager/types';
-import {AlertmanagerAction, useAlertmanagerAbilities} from '../../../hooks/useAbilities';
-import {ROOT_ROUTE_NAME} from '../../../utils/k8s/constants';
-import {canAdminEntity} from '../../../utils/k8s/utils';
-import {createRelativeUrl} from '../../../utils/url';
+import { AlertmanagerAction, useAlertmanagerAbilities } from '../../../hooks/useAbilities';
+import { ROOT_ROUTE_NAME, ROUTES_RESOURCE_TYPE } from '../../../utils/k8s/constants';
+import { canAdminEntity } from '../../../utils/k8s/utils';
+import { createRelativeUrl } from '../../../utils/url';
 import ConditionalWrap from '../../ConditionalWrap';
-import {ManagePermissionsDrawer} from '../../permissions/ManagePermissions';
-import {trackNotificationPolicyExported} from '../notificationPolicyAnalytics';
-import {useExportRoutingTree} from '../useExportRoutingTree';
-import {isRouteProvisioned, useDeleteRoutingTree} from '../useNotificationPolicyRoute';
+import { ManagePermissions } from '../../permissions/ManagePermissions';
+import { trackNotificationPolicyExported } from '../notificationPolicyAnalytics';
+import { useExportRoutingTree } from '../useExportRoutingTree';
+import { isRouteProvisioned, useDeleteRoutingTree } from '../useNotificationPolicyRoute';
 
-import {DeleteModal, ResetModal} from './Modals';
+import { DeleteModal, ResetModal } from './Modals';
 
 interface ActionButtonsProps {
   route: Route;
@@ -23,7 +23,6 @@ interface ActionButtonsProps {
 export const ActionButtons = ({ route }: ActionButtonsProps) => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
-  const [showPermissionsDrawer, setShowPermissionsDrawer] = useState(false);
 
   const [
     [updatePoliciesSupported, updatePoliciesAllowed],
@@ -48,16 +47,17 @@ export const ActionButtons = ({ route }: ActionButtonsProps) => {
 
   if (showManagePermissions) {
     actions.push(
-      <LinkButton
+      <ManagePermissions
         key="manage-permissions"
-        icon="unlock"
-        variant="secondary"
-        size="sm"
-        data-testid="manage-permissions-action"
-        onClick={() => setShowPermissionsDrawer(true)}
-      >
-        <Trans i18nKey="alerting.manage-permissions.button">Manage permissions</Trans>
-      </LinkButton>
+        resource={ROUTES_RESOURCE_TYPE}
+        resourceId={routeMeta?.name ?? ''}
+        resourceName={route.name}
+        renderButton={({ onClick }) => (
+          <Button icon="unlock" variant="secondary" size="sm" data-testid="manage-permissions-action" onClick={onClick}>
+            <Trans i18nKey="alerting.manage-permissions.button">Manage permissions</Trans>
+          </Button>
+        )}
+      />
     );
   }
   actions.push(
@@ -202,14 +202,6 @@ export const ActionButtons = ({ route }: ActionButtonsProps) => {
         routeName={route[ROUTES_META_SYMBOL]?.name ?? ''}
       />
       {ExportDrawer}
-      {showPermissionsDrawer && (
-        <ManagePermissionsDrawer
-          resource="routes"
-          resourceId={routeMeta?.name ?? ''}
-          resourceName={route.name}
-          onClose={() => setShowPermissionsDrawer(false)}
-        />
-      )}
     </>
   );
 };
