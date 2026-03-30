@@ -1,7 +1,7 @@
 import { css } from '@emotion/css';
 import { useMemo } from 'react';
 
-import { GrafanaTheme2, SelectableValue } from '@grafana/data';
+import { type GrafanaTheme2, type SelectableValue } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { Icon, MultiSelect, useStyles2 } from '@grafana/ui';
 import { useSearchTeamsQuery } from 'app/api/clients/legacy';
@@ -45,8 +45,12 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
   // We go through some hoops here to create a virtual "all teams" item to allow quickly selecting all the teams
   // in the select.
   const allTeamReferences = useMemo(() => {
-    // option.value is UID of the team. This needs to exist always so we should be able to use ! here.
-    return teamOptions.map((option) => option.value!);
+    return (
+      teamOptions
+        .map((option) => option.value)
+        // option.value is UID of the team so should always exist but this helps with typing.
+        .filter((value) => value !== undefined)
+    );
   }, [teamOptions]);
 
   // Check if the value prop matches list of all the teams we get from the API
@@ -56,9 +60,11 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
     values.length === allTeamReferences.length &&
     allTeamReferences.every((reference) => values.includes(reference));
 
-  const value = hasAllTeamsSelected
-    ? [allTeamsValue]
-    : teamOptions.filter((option) => option.value && values.includes(option.value));
+  const value = useMemo(() => {
+    return hasAllTeamsSelected
+      ? [allTeamsValue]
+      : teamOptions.filter((option) => option.value && values.includes(option.value));
+  }, [hasAllTeamsSelected, allTeamsValue, teamOptions, values]);
 
   // Add "all teams" option if there are some actual teams
   const options = useMemo<Array<SelectableValue<string>>>(() => {
