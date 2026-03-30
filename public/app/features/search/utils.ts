@@ -66,5 +66,14 @@ export const parseRouteParams = (params: UrlQueryMap) => {
  * If we have filter, we can only show the results in the list layout as the tree layout does not work well
  */
 export function needsListLayout(q: Partial<SearchState>) {
-  return q.query || q.sort || q.starred || q.tag?.length || q.createdBy || q.ownerReference?.length || q.panel_type;
+  return (
+    q.query ||
+    q.sort ||
+    q.starred ||
+    q.tag?.length ||
+    q.createdBy ||
+    q.ownerReference?.length ||
+    q.panel_type ||
+    q.datasource
+  );
 }
