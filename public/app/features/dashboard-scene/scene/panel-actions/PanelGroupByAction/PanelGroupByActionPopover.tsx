@@ -3,11 +3,11 @@ import { useCallback } from 'react';
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
-import { GroupByVariable, VariableValueOption, VariableValueSingle } from '@grafana/scenes';
+import { AdHocFiltersVariable, GroupByVariable, VariableValueOption, VariableValueSingle } from '@grafana/scenes';
 import { Button, Checkbox, ClickOutsideWrapper, FilterInput, Stack, useStyles2 } from '@grafana/ui';
 
 interface Props {
-  groupByVariable: GroupByVariable;
+  groupByVariable: GroupByVariable | AdHocFiltersVariable;
   onCancel: () => void;
   isLoading: boolean;
   searchValue: string;
@@ -45,13 +45,22 @@ export function PanelGroupByActionPopover({
   };
 
   const handleApply = useCallback(() => {
-    groupByVariable.changeValueTo(values, values.map(String), true);
+    if (groupByVariable instanceof GroupByVariable) {
+      groupByVariable.changeValueTo(values, values.map(String), true);
+    } else {
+      const nonGroupByFilters = groupByVariable.state.filters.filter((f) => f.operator !== 'groupBy');
+      const groupByFilters = values.map((v) => ({ key: String(v), operator: 'groupBy', value: '' }));
+      groupByVariable.setState({ filters: [...nonGroupByFilters, ...groupByFilters] });
+    }
     onCancel();
   }, [groupByVariable, onCancel, values]);
 
-  const groupByHasCurrentValues = Array.isArray(groupByVariable.state.value)
-    ? groupByVariable.state.value.length > 0
-    : Boolean(groupByVariable.state.value);
+  const groupByHasCurrentValues =
+    groupByVariable instanceof GroupByVariable
+      ? Array.isArray(groupByVariable.state.value)
+        ? groupByVariable.state.value.length > 0
+        : Boolean(groupByVariable.state.value)
+      : groupByVariable.state.filters.some((f) => f.operator === 'groupBy');
 
   return (
     <ClickOutsideWrapper onClick={onCancel} useCapture={true}>
