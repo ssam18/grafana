@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -81,6 +82,7 @@ func segmentDocID(key DataKey) string {
 
 // segmentKVKey returns the KV key for storing a segment's .zap data.
 // Format: {group}/{resource}/{rv}.zap
+// RVs are globally unique snowflake IDs, so this is unique per segment.
 func segmentKVKey(key DataKey) string {
 	return fmt.Sprintf("%s/%s/%d.zap", key.Group, key.Resource, key.ResourceVersion)
 }
@@ -755,14 +757,69 @@ func (s *segmentDataStore) GetResourceKeyAtRevision(ctx context.Context, key Get
 }
 
 func (s *segmentDataStore) ListLatestResourceKeys(ctx context.Context, key ListRequestKey) iter.Seq2[DataKey, error] {
-	return func(yield func(DataKey, error) bool) {
-		yield(DataKey{}, fmt.Errorf("not implemented: ListLatestResourceKeys"))
-	}
+	return s.ListResourceKeysAtRevision(ctx, ListRequestOptions{Key: key})
 }
 
 func (s *segmentDataStore) ListResourceKeysAtRevision(ctx context.Context, options ListRequestOptions) iter.Seq2[DataKey, error] {
+	if err := options.Validate(); err != nil {
+		return func(yield func(DataKey, error) bool) {
+			yield(DataKey{}, err)
+		}
+	}
+
+	rv := options.ResourceVersion
+	if rv == 0 {
+		rv = math.MaxInt64
+	}
+
+	// Build the Keys iteration key, applying continue cursor if present.
+	listKey := options.Key
+	if options.ContinueName != "" {
+		listKey.Name = options.ContinueName
+		if options.Key.Namespace == "" && options.ContinueNamespace != "" {
+			listKey.Namespace = options.ContinueNamespace
+		}
+	}
+
 	return func(yield func(DataKey, error) bool) {
-		yield(DataKey{}, fmt.Errorf("not implemented: ListResourceKeysAtRevision"))
+		var candidateKey *DataKey
+
+		yieldCandidate := func() bool {
+			if candidateKey.Action == DataActionDeleted {
+				return true
+			}
+			return yield(*candidateKey, nil)
+		}
+
+		for dataKey, err := range s.Keys(ctx, listKey, SortOrderAsc) {
+			if err != nil {
+				yield(DataKey{}, err)
+				return
+			}
+
+			if candidateKey == nil {
+				if dataKey.ResourceVersion <= rv {
+					candidateKey = &dataKey
+				}
+				continue
+			}
+
+			if !dataKey.SameResource(*candidateKey) || dataKey.ResourceVersion > rv {
+				if !yieldCandidate() {
+					return
+				}
+				if !dataKey.SameResource(*candidateKey) && dataKey.ResourceVersion <= rv {
+					candidateKey = &dataKey
+				} else {
+					candidateKey = nil
+				}
+			} else {
+				candidateKey = &dataKey
+			}
+		}
+		if candidateKey != nil {
+			yieldCandidate()
+		}
 	}
 }
 
