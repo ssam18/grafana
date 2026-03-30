@@ -2778,6 +2778,14 @@ var (
 			Owner:       grafanaDatasourcesCoreServicesSquad,
 			Expression:  "false",
 		},
+		{
+			Name:         "inlinedBootScript",
+			Description:  "Boots the frontend using the boot.js script built from TS instead of the embedded boot script",
+			Stage:        FeatureStageExperimental,
+			Owner:        grafanaFrontendPlatformSquad,
+			Expression:   "false",
+			HideFromDocs: true,
+		},
 	}
 )
 

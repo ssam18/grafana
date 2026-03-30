@@ -925,4 +925,8 @@ const (
 	// FlagQueryFetchConfigFromSettingsService
 	// Enables the query service to fetch the configuration from the settings service
 	FlagQueryFetchConfigFromSettingsService = "queryFetchConfigFromSettingsService"
+
+	// FlagInlinedBootScript
+	// Boots the frontend using the boot.js script built from TS instead of the embedded boot script
+	FlagInlinedBootScript = "inlinedBootScript"
 )
