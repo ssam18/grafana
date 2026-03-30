@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { fuzzySearch, MetricFindValue } from '@grafana/data';
+import { fuzzySearch, type MetricFindValue } from '@grafana/data';
 import { selectors } from '@grafana/e2e-selectors';
 import { Trans } from '@grafana/i18n';
 import { getDataSourceSrv } from '@grafana/runtime';
 import {
-  AdHocFiltersVariable,
+  type AdHocFiltersVariable,
   GroupByVariable,
-  SceneDataQuery,
-  VariableValueOption,
-  VariableValueSingle,
+  type SceneDataQuery,
+  type VariableValueOption,
+  type VariableValueSingle,
 } from '@grafana/scenes';
 import { Button, Icon, Popover } from '@grafana/ui';
 
@@ -43,7 +43,7 @@ export function PanelGroupByAction({ groupByVariable, adhocGroupByVariable, quer
 
       if (groupByVariable) {
         const ds = await getDataSourceSrv().get(groupByVariable.state.datasource);
-        const keys = await groupByVariable._getKeys(ds as any, queries);
+        const keys = await groupByVariable._getKeys(ds, queries);
         fetchedOptions = metricFindValuesToOptions(Array.isArray(keys) ? keys : (keys.data ?? []));
       } else if (adhocGroupByVariable) {
         const selectableValues = await adhocGroupByVariable._getGroupByKeys(null, queries);

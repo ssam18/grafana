@@ -3,7 +3,12 @@ import { useCallback } from 'react';
 
 import { type GrafanaTheme2 } from '@grafana/data';
 import { t, Trans } from '@grafana/i18n';
-import { AdHocFiltersVariable, GroupByVariable, VariableValueOption, VariableValueSingle } from '@grafana/scenes';
+import {
+  type AdHocFiltersVariable,
+  GroupByVariable,
+  type VariableValueOption,
+  type VariableValueSingle,
+} from '@grafana/scenes';
 import { Button, Checkbox, ClickOutsideWrapper, FilterInput, Spinner, Stack, useStyles2 } from '@grafana/ui';
 
 interface Props {
