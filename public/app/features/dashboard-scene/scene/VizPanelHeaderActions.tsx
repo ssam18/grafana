@@ -1,12 +1,12 @@
-import { Unsubscribable } from 'rxjs';
+import { type Unsubscribable } from 'rxjs';
 
 import {
   AdHocFiltersVariable,
   GroupByVariable,
-  SceneComponentProps,
+  type SceneComponentProps,
   sceneGraph,
   SceneObjectBase,
-  SceneObjectState,
+  type SceneObjectState,
   SceneQueryRunner,
   VizPanel,
 } from '@grafana/scenes';
