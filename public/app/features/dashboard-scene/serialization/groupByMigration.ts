@@ -5,7 +5,7 @@
  * are merged into the matching AdHocFiltersVariable (same datasource) as
  * groupBy-operator filters. The GroupByVariable is then dropped from the
  * variable list so it is never instantiated.
- * 
+ *
  * Since this is a runtime layer the schema will not be persisted until the user saves the dashboard,
  * so reverting back to the old model by turning the FF off won't work without re-adding a GroupByVariable manually.
  *
