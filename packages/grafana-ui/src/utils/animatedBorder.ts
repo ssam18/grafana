@@ -1,8 +1,8 @@
 import { css, keyframes } from '@emotion/css';
 
-import { GrafanaTheme2 } from '@grafana/data';
+import { type GrafanaTheme2 } from '@grafana/data';
 
-import { BackgroundColor } from '../components/Layout/Box/Box';
+import { type BackgroundColor } from '../components/Layout/Box/Box';
 import { BORDER_ANGLE_PROPERTY, BORDER_OPACITY_PROPERTY } from '../themes/GlobalStyles/animatedBorder';
 
 /** @public */
@@ -17,6 +17,7 @@ export interface AnimatedBorderOptions {
   backgroundColor?: BackgroundColor;
 }
 
+// TODO move these colors to theme
 const AI_COLOR_1 = 'rgb(168, 85, 247)';
 const AI_COLOR_2 = 'rgb(249, 115, 22)';
 const DEFAULT_DURATION = 2000;

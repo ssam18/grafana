@@ -1,12 +1,12 @@
 import { css, cx } from '@emotion/css';
-import { Meta, StoryFn } from '@storybook/react';
+import { type Meta, type StoryFn } from '@storybook/react';
 
-import { GrafanaTheme2 } from '@grafana/data';
+import { type GrafanaTheme2 } from '@grafana/data';
 
 import { useStyles2 } from '../themes/ThemeContext';
 import { DashboardStoryCanvas } from '../utils/storybook/DashboardStoryCanvas';
 
-import { AnimatedBorderOptions, getAnimatedBorderStyles } from './animatedBorder';
+import { type AnimatedBorderOptions, getAnimatedBorderStyles } from './animatedBorder';
 
 const meta: Meta = {
   title: 'Utilities/AnimatedBorder',
