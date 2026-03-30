@@ -11,9 +11,13 @@
  *
  * This is a temporary compat layer — remove once GroupByVariable is fully deprecated.
  */
-import { GroupByVariableModel, TypedVariableModel } from '@grafana/data';
+import type { GroupByVariableModel, TypedVariableModel } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { AdhocVariableKind, GroupByVariableKind, VariableKind } from '@grafana/schema/apis/dashboard.grafana.app/v2';
+import type {
+  AdhocVariableKind,
+  GroupByVariableKind,
+  VariableKind,
+} from '@grafana/schema/apis/dashboard.grafana.app/v2';
 
 const GROUP_BY_OPERATOR = 'groupBy';
 
