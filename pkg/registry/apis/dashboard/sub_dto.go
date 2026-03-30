@@ -193,7 +193,6 @@ func (r *DTOConnector) Connect(ctx context.Context, name string, opts runtime.Ob
 
 		// Annotation permissions - check using annotations subresource with standard K8s verbs
 		dashboardAnnotationActions := dashboard.AnnotationActions{}
-		orgAnnotationActions := dashboard.AnnotationActions{}
 
 		// Check dashboard annotation permissions using "annotations" subresource
 		annotateCreateRes, err := r.accessClient.Check(ctx, authInfo, authlib.CheckRequest{
@@ -235,16 +234,7 @@ func (r *DTOConnector) Connect(ctx context.Context, name string, opts runtime.Ob
 		}
 		dashboardAnnotationActions.CanDelete = annotateDeleteRes.Allowed
 
-		// Organization annotations - currently use same permissions as dashboard annotations
-		// TODO: Add separate organization-level annotation permission checks if needed
-		orgAnnotationActions.CanAdd = dashboardAnnotationActions.CanAdd
-		orgAnnotationActions.CanEdit = dashboardAnnotationActions.CanEdit
-		orgAnnotationActions.CanDelete = dashboardAnnotationActions.CanDelete
-
-		access.AnnotationsPermissions = &dashboard.AnnotationPermission{
-			Dashboard:    dashboardAnnotationActions,
-			Organization: orgAnnotationActions,
-		}
+		access.AnnotationsPermissions = &dashboard.AnnotationPermission{Dashboard: dashboardAnnotationActions}
 
 		title := obj.FindTitle("")
 		access.Slug = slugify.Slugify(title)
