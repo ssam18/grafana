@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 
 import { useAssistant } from '@grafana/assistant';
 import { config } from '@grafana/runtime';
-import { SceneObject } from '@grafana/scenes';
+import { type SceneObject } from '@grafana/scenes';
 import { useMediaQueryMinWidth } from 'app/core/hooks/useMediaQueryMinWidth';
 
 import { useAssistantPanelHints } from './PanelAssistantHint';
