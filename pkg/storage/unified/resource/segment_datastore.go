@@ -34,6 +34,10 @@ const (
 
 var _ DataStore = &segmentDataStore{}
 
+// errTombstone is a sentinel error returned by dataKeyFromSegment when the document
+// is a tombstone. Callers should skip the document rather than propagating the error.
+var errTombstone = fmt.Errorf("tombstone")
+
 // segmentDataStore is a DataStore backed by Zap segments stored in a KV store.
 type segmentDataStore struct {
 	kv      KV // KV store for segments + manifest
@@ -115,6 +119,27 @@ func buildSegmentDoc(key DataKey, value []byte) *document.Document {
 	}
 	// _source — stored only (full resource bytes)
 	doc.AddField(document.NewTextFieldWithIndexingOptions("_source", nil, value, index.StoreField))
+
+	return doc
+}
+
+// buildTombstoneDoc builds a minimal bleve document that marks a DataKey as tombstoned.
+// It carries the same _id and _rv as the original so reads can match it, plus a _tombstone
+// stored field that signals readers to skip this document. No _source is stored.
+func buildTombstoneDoc(key DataKey) *document.Document {
+	kw := getKeywordAnalyzer()
+	docID := segmentDocID(key)
+	doc := document.NewDocument(docID)
+
+	if key.Namespace != "" {
+		doc.AddField(document.NewTextFieldCustom("namespace", nil, []byte(key.Namespace), index.IndexField, kw))
+	}
+	doc.AddField(document.NewTextFieldCustom("name", nil, []byte(key.Name), index.IndexField, kw))
+	doc.AddField(document.NewNumericFieldWithIndexingOptions("resource_version", nil, float64(key.ResourceVersion), index.IndexField))
+	doc.AddField(document.NewTextFieldWithIndexingOptions("_rv", nil, []byte(strconv.FormatInt(key.ResourceVersion, 10)), index.StoreField))
+	doc.AddField(document.NewTextFieldCustom("action", nil, []byte(string(key.Action)), index.IndexField|index.StoreField, kw))
+	// _tombstone marker — presence alone signals this doc is a tombstone.
+	doc.AddField(document.NewTextFieldWithIndexingOptions("_tombstone", nil, []byte("1"), index.StoreField))
 
 	return doc
 }
@@ -215,6 +240,9 @@ func collectVersions(readers []*segment.SegmentReader, docID string) ([]DataKey,
 			}
 
 			dk, err := dataKeyFromSegment(reader, posting.Number())
+			if err == errTombstone {
+				continue // skip tombstoned documents
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -249,6 +277,7 @@ func dataKeyFromSegment(reader *segment.SegmentReader, docNum uint64) (DataKey, 
 	var action kvpkg.DataAction
 	var folder string
 
+	var tombstone bool
 	err = reader.VisitStoredFields(docNum, func(field string, typ byte, value []byte, _ []uint64) bool {
 		switch field {
 		case "_rv":
@@ -257,11 +286,17 @@ func dataKeyFromSegment(reader *segment.SegmentReader, docNum uint64) (DataKey, 
 			action = kvpkg.DataAction(string(value))
 		case "folder":
 			folder = string(value)
+		case "_tombstone":
+			tombstone = true
 		}
 		return true
 	})
 	if err != nil {
 		return DataKey{}, fmt.Errorf("failed to read stored fields for doc %d: %w", docNum, err)
+	}
+
+	if tombstone {
+		return DataKey{}, errTombstone
 	}
 
 	return DataKey{
@@ -337,6 +372,7 @@ func (s *segmentDataStore) findDocInSegment(reader *segment.SegmentReader, targe
 		// Read stored fields to check RV and get _source.
 		var source []byte
 		var rv int64
+		var tombstone bool
 		err = reader.VisitStoredFields(posting.Number(), func(field string, typ byte, value []byte, _ []uint64) bool {
 			switch field {
 			case "_rv":
@@ -344,6 +380,8 @@ func (s *segmentDataStore) findDocInSegment(reader *segment.SegmentReader, targe
 			case "_source":
 				source = make([]byte, len(value))
 				copy(source, value)
+			case "_tombstone":
+				tombstone = true
 			}
 			return true
 		})
@@ -351,6 +389,9 @@ func (s *segmentDataStore) findDocInSegment(reader *segment.SegmentReader, targe
 			return nil, false, fmt.Errorf("failed to read stored fields: %w", err)
 		}
 		if rv == targetRV {
+			if tombstone {
+				return nil, false, nil
+			}
 			return source, true, nil
 		}
 	}
@@ -358,8 +399,34 @@ func (s *segmentDataStore) findDocInSegment(reader *segment.SegmentReader, targe
 }
 
 func (s *segmentDataStore) Delete(ctx context.Context, key DataKey) error {
-	// Remove the manifest entry. Segment data becomes orphaned (janitor responsibility).
-	return s.kv.Delete(ctx, manifestSection, manifestKVKey(key))
+	if err := validateDataKey(key); err != nil {
+		return fmt.Errorf("invalid data key: %w", err)
+	}
+
+	// In the segment model, segments are immutable — we can't remove a document from one.
+	// Instead, write a tombstone segment with a _tombstone marker field. Read methods check
+	// for this field and skip the document. Compaction reclaims the space later.
+	// This is distinct from action=deleted (a logical delete that's still readable).
+	doc := buildTombstoneDoc(key)
+	seg, err := s.builder.BuildSegment(ctx, []*document.Document{doc}, uint64(key.ResourceVersion))
+	if err != nil {
+		return fmt.Errorf("failed to build tombstone segment: %w", err)
+	}
+
+	// Write .zap — overwrites the original segment at this RV.
+	zapWriter, err := s.kv.Save(ctx, segmentsSection, segmentKVKey(key))
+	if err != nil {
+		return fmt.Errorf("failed to save tombstone segment: %w", err)
+	}
+	if _, err := zapWriter.Write(seg.Data); err != nil {
+		_ = zapWriter.Close()
+		return fmt.Errorf("failed to write tombstone segment data: %w", err)
+	}
+	if err := zapWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close tombstone segment writer: %w", err)
+	}
+
+	return nil
 }
 
 // --- Merge-sort infrastructure for streaming term dictionary iteration ---
@@ -548,6 +615,9 @@ func (s *segmentDataStore) keysMergeSorted(
 				}
 
 				dk, err := dataKeyFromSegment(ti.reader, posting.Number())
+				if err == errTombstone {
+					continue // skip tombstoned documents
+				}
 				if err != nil {
 					yield(DataKey{}, err)
 					return
