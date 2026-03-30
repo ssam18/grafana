@@ -768,8 +768,65 @@ func (s *segmentDataStore) ListResourceKeysAtRevision(ctx context.Context, optio
 
 func (s *segmentDataStore) BatchGet(ctx context.Context, keys []DataKey) iter.Seq2[DataObj, error] {
 	return func(yield func(DataObj, error) bool) {
-		yield(DataObj{}, fmt.Errorf("not implemented: BatchGet"))
+		// Validate all keys first.
+		for _, key := range keys {
+			if err := validateDataKey(key); err != nil {
+				yield(DataObj{}, fmt.Errorf("invalid data key %s: %w", key.String(), err))
+				return
+			}
+		}
+
+		// Group keys by (group, resource) so we open segments once per group/resource.
+		type grKey struct{ group, resource string }
+		grouped := make(map[grKey][]DataKey)
+		for _, key := range keys {
+			gk := grKey{key.Group, key.Resource}
+			grouped[gk] = append(grouped[gk], key)
+		}
+
+		for gk, grKeys := range grouped {
+			readers, err := s.openGroupResourceSegments(ctx, gk.group, gk.resource)
+			if err != nil {
+				yield(DataObj{}, err)
+				return
+			}
+
+			for _, key := range grKeys {
+				source, found := s.findDocAcrossSegments(readers, key)
+				if found {
+					if !yield(DataObj{
+						Key:   key,
+						Value: io.NopCloser(bytes.NewReader(source)),
+					}, nil) {
+						for _, r := range readers {
+							r.Close()
+						}
+						return
+					}
+				}
+			}
+
+			for _, r := range readers {
+				r.Close()
+			}
+		}
 	}
+}
+
+// findDocAcrossSegments searches all readers for a document matching the key's doc ID and RV.
+// Returns the _source bytes and whether the document was found.
+func (s *segmentDataStore) findDocAcrossSegments(readers []*segment.SegmentReader, key DataKey) ([]byte, bool) {
+	targetDocID := segmentDocID(key)
+	for _, reader := range readers {
+		source, found, err := s.findDocInSegment(reader, targetDocID, key.ResourceVersion)
+		if err != nil {
+			continue
+		}
+		if found {
+			return source, true
+		}
+	}
+	return nil, false
 }
 
 func (s *segmentDataStore) GetResourceStats(ctx context.Context, nsr NamespacedResource, minCount int) ([]ResourceStats, error) {
@@ -777,7 +834,12 @@ func (s *segmentDataStore) GetResourceStats(ctx context.Context, nsr NamespacedR
 }
 
 func (s *segmentDataStore) BatchDelete(ctx context.Context, keys []DataKey) error {
-	return fmt.Errorf("not implemented: BatchDelete")
+	for _, key := range keys {
+		if err := s.Delete(ctx, key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *segmentDataStore) GetGroupResources(ctx context.Context) ([]GroupResource, error) {
