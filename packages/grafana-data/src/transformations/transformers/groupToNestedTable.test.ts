@@ -514,6 +514,103 @@ describe('GroupToSubframe transformer - V2 native config', () => {
     });
   });
 
+  it('should keep aggregated field in nested sub-frame when keepNestedField is true', async () => {
+    const testSeries = toDataFrame({
+      name: 'A',
+      fields: [
+        { name: 'time', type: FieldType.time, values: [3000, 4000, 5000, 6000] },
+        { name: 'message', type: FieldType.string, values: ['one', 'one', 'two', 'two'] },
+        { name: 'values', type: FieldType.number, values: [1, 2, 3, 4] },
+      ],
+    });
+
+    const cfg: DataTransformerConfig<GroupToNestedTableTransformerOptionsV2> = {
+      id: DataTransformerID.groupToNestedTable,
+      options: {
+        rules: [
+          {
+            matcher: { id: FieldMatcherID.byName, options: 'message' },
+            operation: GroupByOperationID.groupBy,
+            aggregations: [],
+          },
+          {
+            matcher: { id: FieldMatcherID.byName, options: 'values' },
+            operation: GroupByOperationID.aggregate,
+            aggregations: [ReducerID.sum],
+            keepNestedField: true,
+          },
+        ],
+      },
+    };
+
+    await expect(transformDataFrame([cfg], [testSeries])).toEmitValuesWith((received) => {
+      const result = received[0];
+
+      // Outer frame should have the aggregated column
+      const sumField = result[0].fields.find((f: Field) => f.name === 'values (sum)');
+      expect(sumField).toBeDefined();
+      expect(sumField!.values).toEqual([3, 7]); // 1+2=3, 3+4=7
+
+      // Nested frames should also include the raw 'values' field
+      const nestedFramesField = result[0].fields.find((f: Field) => f.name === '__nestedFrames');
+      expect(nestedFramesField).toBeDefined();
+
+      const firstSubframe = nestedFramesField!.values[0][0];
+      const valuesFieldInSubframe = firstSubframe.fields.find((f: Field) => f.name === 'values');
+      expect(valuesFieldInSubframe).toBeDefined();
+      expect(valuesFieldInSubframe!.values).toEqual([1, 2]);
+
+      const secondSubframe = nestedFramesField!.values[1][0];
+      const valuesFieldInSecondSubframe = secondSubframe.fields.find((f: Field) => f.name === 'values');
+      expect(valuesFieldInSecondSubframe).toBeDefined();
+      expect(valuesFieldInSecondSubframe!.values).toEqual([3, 4]);
+    });
+  });
+
+  it('should exclude aggregated field from nested sub-frame when keepNestedField is false (default)', async () => {
+    const testSeries = toDataFrame({
+      name: 'A',
+      fields: [
+        { name: 'time', type: FieldType.time, values: [3000, 4000, 5000, 6000] },
+        { name: 'message', type: FieldType.string, values: ['one', 'one', 'two', 'two'] },
+        { name: 'values', type: FieldType.number, values: [1, 2, 3, 4] },
+      ],
+    });
+
+    const cfg: DataTransformerConfig<GroupToNestedTableTransformerOptionsV2> = {
+      id: DataTransformerID.groupToNestedTable,
+      options: {
+        rules: [
+          {
+            matcher: { id: FieldMatcherID.byName, options: 'message' },
+            operation: GroupByOperationID.groupBy,
+            aggregations: [],
+          },
+          {
+            matcher: { id: FieldMatcherID.byName, options: 'values' },
+            operation: GroupByOperationID.aggregate,
+            aggregations: [ReducerID.sum],
+            // keepNestedField omitted — defaults to false
+          },
+        ],
+      },
+    };
+
+    await expect(transformDataFrame([cfg], [testSeries])).toEmitValuesWith((received) => {
+      const result = received[0];
+
+      const nestedFramesField = result[0].fields.find((f: Field) => f.name === '__nestedFrames');
+      expect(nestedFramesField).toBeDefined();
+
+      // 'values' field should NOT appear in either nested sub-frame
+      const firstSubframe = nestedFramesField!.values[0][0];
+      expect(firstSubframe.fields.find((f: Field) => f.name === 'values')).toBeUndefined();
+
+      const secondSubframe = nestedFramesField!.values[1][0];
+      expect(secondSubframe.fields.find((f: Field) => f.name === 'values')).toBeUndefined();
+    });
+  });
+
   it('should not process frames when no group-by rule exists in V2 config', async () => {
     const testSeries = toDataFrame({
       name: 'A',

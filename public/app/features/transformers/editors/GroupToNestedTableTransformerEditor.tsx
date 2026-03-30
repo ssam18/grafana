@@ -145,68 +145,90 @@ const RuleRow = ({ rule, data, onChange, onDelete }: RuleRowProps) => {
   ];
 
   return (
-    <Stack gap={0.5} direction="row" wrap={false} alignItems="center">
-      {/* Matcher type selector */}
-      <div className={styles.matcherType}>
-        <Combobox
-          id={matcherSelectId}
-          options={matcherOptions.map(selectableValueToComboboxOption).filter((v) => !!v)}
-          value={rule.matcher.id}
-          onChange={(value) => {
-            onChange({ ...rule, matcher: { id: value.value } });
-          }}
-          aria-label={t('transformers.group-to-nested-table.aria-label-matcher-type', 'Select matcher type')}
-        />
-      </div>
+    <Stack gap={0.5} direction="column">
+      {/* Row 1: matcher type + matcher options + operation + delete */}
+      <Stack gap={0.5} direction="row" wrap={false} alignItems="center">
+        {/* Matcher type selector */}
+        <div className={styles.matcherType}>
+          <Combobox
+            id={matcherSelectId}
+            options={matcherOptions.map(selectableValueToComboboxOption).filter((v) => !!v)}
+            value={rule.matcher.id}
+            onChange={(value) => {
+              onChange({ ...rule, matcher: { id: value.value } });
+            }}
+            aria-label={t('transformers.group-to-nested-table.aria-label-matcher-type', 'Select matcher type')}
+          />
+        </div>
 
-      {/* Matcher sub-options (field name picker, type picker, regex input, etc.) */}
-      <div className={styles.matcherOptions}>
-        <matcherUI.component
-          id={matcherUI.id}
-          matcher={matcherUI.matcher}
-          data={data}
-          options={rule.matcher.options}
-          onChange={(matcherOption) => {
-            onChange({ ...rule, matcher: { id: rule.matcher.id, options: matcherOption } });
-          }}
-        />
-      </div>
+        {/* Matcher sub-options (field name picker, type picker, regex input, etc.) */}
+        <div className={styles.matcherOptions}>
+          <matcherUI.component
+            id={matcherUI.id}
+            matcher={matcherUI.matcher}
+            data={data}
+            options={rule.matcher.options}
+            onChange={(matcherOption) => {
+              onChange({ ...rule, matcher: { id: rule.matcher.id, options: matcherOption } });
+            }}
+          />
+        </div>
 
-      {/* Operation selector */}
-      <div className={styles.operation}>
-        <Combobox
-          options={operationOptions}
-          value={rule.operation}
-          placeholder={t('transformers.group-to-nested-table.placeholder', 'Select operation')}
-          onChange={(value) => {
-            onChange({ ...rule, operation: value?.value ?? null });
-          }}
-          isClearable
-          aria-label={t('transformers.group-to-nested-table.aria-label-operation', 'Select operation')}
-        />
-      </div>
+        {/* Operation selector */}
+        <div className={styles.operation}>
+          <Combobox
+            options={operationOptions}
+            value={rule.operation}
+            placeholder={t('transformers.group-to-nested-table.placeholder', 'Select operation')}
+            onChange={(value) => {
+              onChange({ ...rule, operation: value?.value ?? null });
+            }}
+            isClearable
+            aria-label={t('transformers.group-to-nested-table.aria-label-operation', 'Select operation')}
+          />
+        </div>
 
-      {/* Aggregation stats picker (only when operation is aggregate) */}
+        {/* Delete button */}
+        <IconButton
+          name="trash-alt"
+          onClick={onDelete}
+          tooltip={t('transformers.group-to-nested-table.aria-label-remove-rule', 'Remove rule')}
+          aria-label={t('transformers.group-to-nested-table.aria-label-remove-rule', 'Remove rule')}
+        />
+      </Stack>
+
+      {/* Row 2: aggregation options (only when operation is aggregate) */}
       {rule.operation === GroupByOperationID.aggregate && (
-        <StatsPicker
-          placeholder={t('transformers.group-by-field-configuration.placeholder-select-stats', 'Select stats')}
-          allowMultiple
-          stats={rule.aggregations}
-          onChange={(stats: string[]) => {
-            // StatsPicker should return ReducerID[] but it is typed as string[].
-            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-            onChange({ ...rule, aggregations: stats as ReducerID[] });
-          }}
-        />
+        <div className={styles.aggregateOptionsRow}>
+          <Stack gap={0.5} direction="row" wrap={false} alignItems="center">
+            <StatsPicker
+              placeholder={t('transformers.group-by-field-configuration.placeholder-select-stats', 'Select stats')}
+              allowMultiple
+              stats={rule.aggregations}
+              onChange={(stats: string[]) => {
+                // StatsPicker should return ReducerID[] but it is typed as string[].
+                // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                onChange({ ...rule, aggregations: stats as ReducerID[] });
+              }}
+            />
+            <InlineField
+              className={styles.inlineField}
+              label={t('transformers.group-to-nested-table.label-keep-nested-field', 'Keep nested field(s)')}
+              tooltip={t(
+                'transformers.group-to-nested-table.tooltip-keep-nested-field',
+                'When enabled, the raw field values are also retained in the nested sub-table alongside the aggregated column.'
+              )}
+            >
+              <Switch
+                value={rule.keepNestedField === true}
+                onChange={() => {
+                  onChange({ ...rule, keepNestedField: !rule.keepNestedField });
+                }}
+              />
+            </InlineField>
+          </Stack>
+        </div>
       )}
-
-      {/* Delete button */}
-      <IconButton
-        name="trash-alt"
-        onClick={onDelete}
-        tooltip={t('transformers.group-to-nested-table.aria-label-remove-rule', 'Remove rule')}
-        aria-label={t('transformers.group-to-nested-table.aria-label-remove-rule', 'Remove rule')}
-      />
     </Stack>
   );
 };
@@ -446,6 +468,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
   matcherOptions: css({
     flexShrink: 0,
     minWidth: theme.spacing(24),
+  }),
+  aggregateOptionsRow: css({
+    maxWidth: theme.spacing(80),
+  }),
+  inlineField: css({
+    alignItems: 'center',
   }),
 });
 
