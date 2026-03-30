@@ -239,6 +239,32 @@ func NewMapperRegistry() MapperRegistry {
 				folderSupport:   false,
 				skipScopeOnVerb: nil,
 			},
+			// Annotations subresource for dashboards
+			// Uses dashboard scope (dashboards:uid:...) but annotation actions
+			"dashboards/annotations": translation{
+				resource:  "dashboards",
+				attribute: "uid",
+				verbMapping: map[string]string{
+					utils.VerbGet:    "annotations:read",
+					utils.VerbList:   "annotations:read",
+					utils.VerbWatch:  "annotations:read",
+					utils.VerbCreate: "annotations:create",
+					utils.VerbUpdate: "annotations:write",
+					utils.VerbPatch:  "annotations:write",
+					utils.VerbDelete: "annotations:delete",
+				},
+				// Mirror dashboard action sets so managed roles like "dashboards:view" also grant annotations:read.
+				actionSetMapping: map[string][]string{
+					utils.VerbGet:    {"dashboards:view", "folders:view", "dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+					utils.VerbList:   {"dashboards:view", "folders:view", "dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+					utils.VerbWatch:  {"dashboards:view", "folders:view", "dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+					utils.VerbCreate: {"dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+					utils.VerbUpdate: {"dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+					utils.VerbPatch:  {"dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+					utils.VerbDelete: {"dashboards:edit", "folders:edit", "dashboards:admin", "folders:admin"},
+				},
+				folderSupport: true,
+			},
 		},
 		"folder.grafana.app": {
 			"folders": newFolderTranslation(),
