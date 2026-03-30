@@ -128,11 +128,11 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: frontend-build
           path: _frontend
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: backend-linux-arm64
           path: _backend
@@ -167,11 +167,11 @@ jobs:
     runs-on: ubuntu-x64-large-io
     needs: [build_with_release_action, build_split_targz]
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: release-action-targz
           path: _release
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           name: split-build-targz
           path: _split
