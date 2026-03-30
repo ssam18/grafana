@@ -1,8 +1,10 @@
-import { WithAccessControlMetadata } from '@grafana/data';
+import { type Action } from 'redux';
 
-import { ManagerKind } from '../apiserver/types';
+import { type WithAccessControlMetadata } from '@grafana/data';
 
-import { QueryResponse } from './service/types';
+import { type ManagerKind } from '../apiserver/types';
+
+import { type QueryResponse } from './service/types';
 
 export enum DashboardSearchItemType {
   DashDB = 'dash-db',
