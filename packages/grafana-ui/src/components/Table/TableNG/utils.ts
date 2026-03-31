@@ -730,8 +730,7 @@ export function applyFilter(
       if (!field || !field.display) {
         continue;
       }
-      const displayedValue = formattedValueToString(field.display(row[value.displayName]));
-      if (!value.filteredSet.has(displayedValue)) {
+      if (!value.filteredSet.has(String(row[value.displayName]))) {
         return false;
       }
     }
@@ -780,12 +779,10 @@ export function computeCrossFilterRows(
     crossFilterRows[filterKey] = chainRows;
     // Advance the chain by applying this filter
     chainRows = chainRows.filter((row) => {
-      const field = fields.find((f) => getDisplayName(f) === filterEntry.displayName);
-      if (!field || !field.display) {
+      if (!fields.some((f) => getDisplayName(f) === filterEntry.displayName)) {
         return true;
       }
-      const displayedValue = formattedValueToString(field.display(row[filterEntry.displayName]));
-      return filterEntry.filteredSet.has(displayedValue);
+      return filterEntry.filteredSet.has(String(row[filterEntry.displayName]));
     });
   }
 
