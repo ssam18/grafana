@@ -40,8 +40,9 @@ type IndexMeta struct {
 //
 // Object storage layout:
 //
+//	/<namespace>/<group>.<resource>/<index-key>/index_meta.json
 //	/<namespace>/<group>.<resource>/<index-key>/store/root.bolt
-//	/<namespace>/<group>.<resource>/<index-key>/*.zap
+//	/<namespace>/<group>.<resource>/<index-key>/store/*.zap
 //	/<namespace>/<group>.<resource>/<index-key>/meta.json  <- uploaded last, signals complete upload
 type RemoteIndexStore interface {
 	// UploadIndex uploads a local index directory to remote storage.
@@ -104,6 +105,11 @@ func (s *remoteIndexStore) UploadIndex(ctx context.Context, nsResource resource.
 	if err != nil {
 		return fmt.Errorf("resolving local dir: %w", err)
 	}
+	// Resolve symlinks so WalkDir enters the real directory.
+	absLocalDir, err = filepath.EvalSymlinks(absLocalDir)
+	if err != nil {
+		return fmt.Errorf("resolving local dir symlinks: %w", err)
+	}
 
 	meta.Files = make(map[string]int64)
 	var relPaths []string
@@ -114,8 +120,6 @@ func (s *remoteIndexStore) UploadIndex(ctx context.Context, nsResource resource.
 		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
-		// Skip meta.json — we generate our own manifest and uploading a pre-existing
-		// one would cause a size mismatch on round-trip.
 		if d.Name() == metaJSONFile {
 			return nil
 		}
@@ -156,30 +160,11 @@ func (s *remoteIndexStore) UploadIndex(ctx context.Context, nsResource resource.
 }
 
 func (s *remoteIndexStore) uploadFile(ctx context.Context, objectKey, localPath string) error {
-	// Lstat the path first — reject symlinks before opening.
-	linfo, err := os.Lstat(localPath)
-	if err != nil {
-		return err
-	}
-	if !linfo.Mode().IsRegular() {
-		return fmt.Errorf("not a regular file (mode %s): %s", linfo.Mode().Type(), localPath)
-	}
-
-	f, err := os.Open(localPath) //nolint:gosec // path validated by Lstat+SameFile above
+	f, err := os.Open(localPath) //nolint:gosec // path is under the server-controlled bleve index directory
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-
-	// Verify the opened fd matches the file we lstat'd by comparing device+inode.
-	// This detects a swap to symlink between the Lstat and Open calls.
-	finfo, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("stat after open: %w", err)
-	}
-	if !os.SameFile(linfo, finfo) {
-		return fmt.Errorf("file changed between check and open (possible symlink swap): %s", localPath)
-	}
 
 	return s.bucket.Upload(ctx, objectKey, f, &blob.WriterOptions{
 		ContentType: "application/octet-stream",
@@ -219,9 +204,9 @@ func (s *remoteIndexStore) DownloadIndex(ctx context.Context, nsResource resourc
 		objectKey := pfx + relPath
 		localPath := filepath.Join(realDest, filepath.FromSlash(relPath))
 
-		safePath, err := safeDownloadPath(localPath, realDest, relPath)
+		safePath, err := safeDownloadPath(localPath, realDest)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("validating download path for %s: %w", relPath, err)
 		}
 
 		if err := s.downloadFile(ctx, objectKey, safePath); err != nil {
@@ -241,46 +226,21 @@ func (s *remoteIndexStore) DownloadIndex(ctx context.Context, nsResource resourc
 	return &meta, nil
 }
 
-// safeDownloadPath validates that localPath stays inside realDest after resolving
-// symlinks in both the parent directory and the leaf file. It creates intermediate
-// directories as needed and returns the resolved safe path to write to.
-func safeDownloadPath(localPath, realDest, relPath string) (string, error) {
-	// Lexical check catches obvious traversal like "../".
+// safeDownloadPath validates that localPath stays inside realDest
+func safeDownloadPath(localPath, realDest string) (string, error) {
 	cleanDest := realDest + string(os.PathSeparator)
 	if !strings.HasPrefix(filepath.Clean(localPath), cleanDest) {
-		return "", fmt.Errorf("path traversal detected in manifest entry %q: resolved to %s which is outside %s", relPath, filepath.Clean(localPath), realDest)
+		return "", fmt.Errorf("path traversal detected: %s is outside %s", filepath.Clean(localPath), realDest)
 	}
-
-	if err := os.MkdirAll(filepath.Dir(localPath), 0750); err != nil {
-		return "", fmt.Errorf("failed to create directory for %s: %w", relPath, err)
-	}
-
-	realParent, err := filepath.EvalSymlinks(filepath.Dir(localPath))
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve parent symlinks for %s: %w", relPath, err)
-	}
-	if !strings.HasPrefix(realParent, cleanDest) && realParent != realDest {
-		return "", fmt.Errorf("parent directory symlink escapes destination for %q: %s resolves outside %s", relPath, filepath.Dir(localPath), realDest)
-	}
-	safePath := filepath.Join(realParent, filepath.Base(localPath))
-
-	// Check if the leaf file itself is a pre-existing symlink.
-	if linfo, err := os.Lstat(safePath); err == nil {
-		if linfo.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("destination file is a symlink for %q: %s", relPath, safePath)
-		}
-	}
-
-	return safePath, nil
+	return localPath, nil
 }
 
-// downloadFile creates localPath and streams the remote object into it.
-// Note: there is a residual TOCTOU window between safeDownloadPath's symlink
-// check and os.Create. This is mitigated by the destination always being the
-// Grafana-controlled bleve cache directory (cfg.IndexPath), not a user-writable
-// location, so an attacker cannot inject symlinks between the check and create.
 func (s *remoteIndexStore) downloadFile(ctx context.Context, objectKey, localPath string) error {
-	f, err := os.Create(localPath) //nolint:gosec // path validated by safeDownloadPath
+	if err := os.MkdirAll(filepath.Dir(localPath), 0750); err != nil {
+		return fmt.Errorf("failed to create directory for %s: %w", localPath, err)
+	}
+	//nolint:gosec // localPath validated by safeDownloadPath: traversal check against the bleve cache directory
+	f, err := os.Create(localPath)
 	if err != nil {
 		return err
 	}
