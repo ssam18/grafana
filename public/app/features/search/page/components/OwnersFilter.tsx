@@ -23,7 +23,7 @@ interface OwnersFilterProps {
 export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
   const styles = useStyles2(getStyles);
   // At this point we have hard limit for number of items we show. The issue is we are using MultiSelect because of
-  // some UX bug (it opens only when clicking on internal input, not the full element) in Combobox but Multiselect
+  // UX bug https://github.com/grafana/grafana/issues/121586 in Combobox but Multiselect
   // then does not allow for async options loading.
   const { data, error, isLoading } = useSearchTeamsQuery({ perpage: TEAM_OPTIONS_LIMIT, sort: 'name-asc' });
 
