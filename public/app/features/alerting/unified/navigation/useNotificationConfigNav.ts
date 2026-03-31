@@ -1,14 +1,14 @@
-import { useMemo } from 'react';
-import { useLocation } from 'react-router-dom-v5-compat';
+import {useMemo} from 'react';
+import {useLocation} from 'react-router-dom-v5-compat';
 
-import { type NavModelItem } from '@grafana/data';
-import { t } from '@grafana/i18n';
-import { config } from '@grafana/runtime';
-import { contextSrv } from 'app/core/services/context_srv';
-import { AccessControlAction } from 'app/types/accessControl';
-import { useSelector } from 'app/types/store';
+import {type NavModelItem} from '@grafana/data';
+import {t} from '@grafana/i18n';
+import {config} from '@grafana/runtime';
+import {contextSrv} from 'app/core/services/context_srv';
+import {AccessControlAction} from 'app/types/accessControl';
+import {useSelector} from 'app/types/store';
 
-import { ALERTING_PATHS, NAV_IDS } from '../utils/navigation';
+import {ALERTING_PATHS, NAV_IDS} from '../utils/navigation';
 
 /**
  * Returns the correct navId for notification configuration pages based on the alertingNavigationV2 feature toggle.
@@ -29,7 +29,11 @@ function canViewContactPoints(): boolean {
  * Check if user has permission to view notification policies
  */
 function canViewNotificationPolicies(): boolean {
-  return contextSrv.hasPermission(AccessControlAction.AlertingRoutesRead);
+  return (
+    contextSrv.hasPermission(AccessControlAction.AlertingNotificationsRead) ||
+    contextSrv.hasPermission(AccessControlAction.AlertingRoutesRead) ||
+    contextSrv.hasPermission(AccessControlAction.ActionAlertingManagedRoutesRead)
+  );
 }
 
 /**
