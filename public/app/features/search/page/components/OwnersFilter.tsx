@@ -3,11 +3,12 @@ import { useMemo } from 'react';
 
 import { type GrafanaTheme2, type SelectableValue } from '@grafana/data';
 import { t } from '@grafana/i18n';
-import { Icon, MultiSelect, useStyles2 } from '@grafana/ui';
+import { Icon, MultiSelect, Tooltip, useStyles2 } from '@grafana/ui';
 import { useSearchTeamsQuery } from 'app/api/clients/legacy';
 import { teamOwnerRef } from 'app/features/browse-dashboards/utils/dashboards';
 
 const ALL_TEAMS_VALUE = '__all-teams__';
+// The number here is currently arbitrary, feel free to change if it makes sense.
 const TEAM_OPTIONS_LIMIT = 200;
 
 interface OwnersFilterProps {
@@ -24,6 +25,9 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
   // some UX bug (it opens only when clicking on internal input, not the full element) in Combobox but Multiselect
   // then does not allow for async options loading.
   const { data, isLoading } = useSearchTeamsQuery({ perpage: TEAM_OPTIONS_LIMIT, sort: 'name-asc' });
+
+  // In this case we show a warning tooltip and don't show the allTeamsValue as we cannot really select *all* the teams
+  // if we cannot load them.
   const hasMoreTeamsThanLimit = (data?.totalCount ?? 0) > TEAM_OPTIONS_LIMIT;
 
   const teamOptions = useMemo<Array<SelectableValue<string>>>(() => {
@@ -97,15 +101,45 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
         loadingMessage={t('browse-dashboards.filters.owner-loading', 'Loading teams...')}
         placeholder={t('browse-dashboards.filters.owner-placeholder', 'Filter by owner')}
         isLoading={isLoading}
-        prefix={<Icon name="filter" />}
+        prefix={hasMoreTeamsThanLimit ? <TruncatedListTooltip totalCount={data?.totalCount} /> : <Icon name="filter" />}
       />
     </div>
   );
 }
 
-const getStyles = (_theme: GrafanaTheme2) => ({
+function TruncatedListTooltip({ totalCount }: { totalCount: number | undefined }) {
+  const styles = useStyles2(getStyles);
+  return (
+    <Tooltip
+      content={t(
+        'browse-dashboards.filters.owner-limit-warning',
+        'Listing only first {{limit}} teams out of {{totalCount}}.',
+        { limit: TEAM_OPTIONS_LIMIT, totalCount: totalCount ?? 0 }
+      )}
+      placement="top"
+    >
+      <span
+        aria-label={t('browse-dashboards.filters.owner-limit-warning-icon', 'Owner filter limit warning')}
+        className={styles.warningIcon}
+      >
+        <Icon name="exclamation-triangle" size="sm" />
+      </span>
+    </Tooltip>
+  );
+}
+
+const getStyles = (theme: GrafanaTheme2) => ({
   ownerFilter: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
     minWidth: '180px',
     flexGrow: 1,
+  }),
+  warningIcon: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: theme.colors.warning.text,
+    cursor: 'help',
   }),
 });
