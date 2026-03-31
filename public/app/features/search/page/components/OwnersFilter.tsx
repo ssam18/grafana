@@ -139,10 +139,10 @@ function TruncatedListTooltip({ totalCount }: { totalCount: number | undefined }
 function LoadErrorTooltip({ error }: { error: unknown }) {
   const styles = useStyles2(getStyles);
 
-  const errorMessage = extractErrorMessage(
-    error,
-    t('browse-dashboards.filters.owner-load-error', 'Failed to load teams')
-  );
+  const errorMessage =
+    t('browse-dashboards.filters.owner-load-error-prefix', 'Failed to load teams because of error:') +
+    ' ' +
+    extractErrorMessage(error);
 
   return (
     <Tooltip content={errorMessage} placement="top">
