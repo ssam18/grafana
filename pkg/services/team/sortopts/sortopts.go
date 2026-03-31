@@ -80,6 +80,53 @@ func newIntSortOption(field string, desc bool, index int) model.SortOption {
 	}
 }
 
+// FormatSortQueryParam converts SortOption(s) back into a comma-separated query
+// param string (the inverse of ParseSortQueryParam). It matches each option's
+// Sorter field and direction against SortOptionsByQueryParam to produce the
+// correct query-param key (e.g. "memberCount-desc" rather than "member_count-desc").
+func FormatSortQueryParam(opts []model.SortOption) string {
+	if len(opts) == 0 {
+		return ""
+	}
+	sorted := make([]model.SortOption, len(opts))
+	copy(sorted, opts)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Index < sorted[j].Index || (sorted[i].Index == sorted[j].Index && sorted[i].Name < sorted[j].Name)
+	})
+	params := make([]string, 0, len(sorted))
+	for _, opt := range sorted {
+		if key := reverseLookupSortKey(opt); key != "" {
+			params = append(params, key)
+		}
+	}
+	return strings.Join(params, ",")
+}
+
+// reverseLookupSortKey finds the query-param key in SortOptionsByQueryParam
+// that matches the given SortOption's field and direction.
+func reverseLookupSortKey(opt model.SortOption) string {
+	if len(opt.Filter) == 0 {
+		return ""
+	}
+	s, ok := opt.Filter[0].(Sorter)
+	if !ok {
+		return ""
+	}
+	for key, candidate := range SortOptionsByQueryParam {
+		if len(candidate.Filter) == 0 {
+			continue
+		}
+		cs, ok := candidate.Filter[0].(Sorter)
+		if !ok {
+			continue
+		}
+		if cs.Field == s.Field && cs.Descending == s.Descending {
+			return key
+		}
+	}
+	return ""
+}
+
 // ParseSortQueryParam parses the "sort" query param and returns an ordered list of SortOption(s)
 func ParseSortQueryParam(param string) ([]model.SortOption, error) {
 	opts := []model.SortOption{}

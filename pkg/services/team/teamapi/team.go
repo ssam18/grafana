@@ -5,12 +5,15 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/open-feature/go-sdk/openfeature"
+
 	claims "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana/pkg/api/dtos"
 	"github.com/grafana/grafana/pkg/api/response"
 	"github.com/grafana/grafana/pkg/services/accesscontrol"
 	contextmodel "github.com/grafana/grafana/pkg/services/contexthandler/model"
 	"github.com/grafana/grafana/pkg/services/dashboards/dashboardaccess"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/preference/prefapi"
 	"github.com/grafana/grafana/pkg/services/team"
 	"github.com/grafana/grafana/pkg/services/team/sortopts"
@@ -205,10 +208,22 @@ func (tapi *TeamAPI) searchTeams(c *contextmodel.ReqContext) response.Response {
 		teamIDs[strconv.FormatInt(team.ID, 10)] = true
 	}
 
-	metadata := tapi.getMultiAccessControlMetadata(c, "teams:id:", teamIDs)
-	if len(metadata) > 0 {
-		for _, team := range queryResult.Teams {
-			team.AccessControl = metadata[strconv.FormatInt(team.ID, 10)]
+	// When teams are returned from the K8s search API, AccessControl is already
+	// populated in the response. Only fetch legacy AC metadata when the redirect
+	// is not active.
+	ctx := c.Req.Context()
+	k8sRedirect := openfeature.NewDefaultClient().Boolean(
+		ctx,
+		featuremgmt.FlagKubernetesTeamsRedirect,
+		false,
+		openfeature.TransactionContext(ctx),
+	)
+	if !k8sRedirect {
+		metadata := tapi.getMultiAccessControlMetadata(c, "teams:id:", teamIDs)
+		if len(metadata) > 0 {
+			for _, team := range queryResult.Teams {
+				team.AccessControl = metadata[strconv.FormatInt(team.ID, 10)]
+			}
 		}
 	}
 
