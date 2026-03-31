@@ -138,12 +138,7 @@ export function TableNGWrap({
   );
 }
 
-const getStyles = (
-  _: GrafanaTheme2,
-  height: number,
-  tableWidth: number,
-  controlsWidth: number
-) => {
+const getStyles = (_: GrafanaTheme2, height: number, tableWidth: number, controlsWidth: number) => {
   return {
     listControlsWrapper: css({
       height: '100%',
