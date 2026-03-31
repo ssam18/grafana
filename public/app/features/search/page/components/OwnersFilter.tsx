@@ -8,6 +8,7 @@ import { useSearchTeamsQuery } from 'app/api/clients/legacy';
 import { teamOwnerRef } from 'app/features/browse-dashboards/utils/dashboards';
 
 const ALL_TEAMS_VALUE = '__all-teams__';
+const TEAM_OPTIONS_LIMIT = 200;
 
 interface OwnersFilterProps {
   values: string[];
@@ -22,7 +23,8 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
   // At this point we have hard limit for number of items we show. The issue is we are using MultiSelect because of
   // some UX bug (it opens only when clicking on internal input, not the full element) in Combobox but Multiselect
   // then does not allow for async options loading.
-  const { data, isLoading } = useSearchTeamsQuery({ perpage: 200, sort: 'name-asc' });
+  const { data, isLoading } = useSearchTeamsQuery({ perpage: TEAM_OPTIONS_LIMIT, sort: 'name-asc' });
+  const hasMoreTeamsThanLimit = (data?.totalCount ?? 0) > TEAM_OPTIONS_LIMIT;
 
   const teamOptions = useMemo<Array<SelectableValue<string>>>(() => {
     if (!data?.teams) {
@@ -55,6 +57,7 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
 
   // Check if the value prop matches list of all the teams we get from the API
   const hasAllTeamsSelected =
+    !hasMoreTeamsThanLimit &&
     values.length > 0 &&
     allTeamReferences.length > 0 &&
     values.length === allTeamReferences.length &&
@@ -71,8 +74,13 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
     if (teamOptions.length === 0) {
       return [];
     }
+
+    if (hasMoreTeamsThanLimit) {
+      return teamOptions;
+    }
+
     return [allTeamsValue, ...teamOptions];
-  }, [teamOptions, allTeamsValue]);
+  }, [allTeamsValue, hasMoreTeamsThanLimit, teamOptions]);
 
   return (
     <div className={styles.ownerFilter}>
@@ -83,7 +91,7 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
         onChange={(selectedOptions) => {
           const values = selectedOptions.map((option) => option.value!);
           // We don't send ALL_TEAMS_VALUE upstream, so we map it to actual list of all the teams.
-          onChange(values.includes(ALL_TEAMS_VALUE) ? allTeamReferences : values);
+          onChange(!hasMoreTeamsThanLimit && values.includes(ALL_TEAMS_VALUE) ? allTeamReferences : values);
         }}
         noOptionsMessage={t('browse-dashboards.filters.owner-no-options', 'No teams found')}
         loadingMessage={t('browse-dashboards.filters.owner-loading', 'Loading teams...')}

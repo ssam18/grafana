@@ -51,4 +51,24 @@ describe('OwnersFilter', () => {
 
     expect(onChange).toHaveBeenCalledWith(['iam.grafana.app/Team/team-a', 'iam.grafana.app/Team/test-team']);
   });
+
+  it('does not show the all teams option when totalCount is more than 200', async () => {
+    server.use(
+      getSearchTeamsHandler(
+        [
+          { id: 1, uid: 'team-a', name: 'Team A', avatarUrl: '' },
+          { id: 2, uid: 'test-team', name: 'Test Team', avatarUrl: '' },
+        ],
+        201
+      )
+    );
+
+    const { user } = render(<OwnersFilter values={[]} onChange={jest.fn()} />);
+
+    await user.click(await screen.findByRole('combobox', { name: 'Owner filter' }));
+
+    expect(screen.queryByText('All teams')).not.toBeInTheDocument();
+    expect(await screen.findByText('Team A')).toBeInTheDocument();
+    expect(await screen.findByText('Test Team')).toBeInTheDocument();
+  });
 });
