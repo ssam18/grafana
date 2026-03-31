@@ -22,10 +22,3 @@ func (o *RoutingTree) SetProvenanceStatus(status string) {
 	}
 	o.Annotations[ProvenanceStatusAnnotationKey] = status
 }
-
-func (o *RoutingTree) SetAccessControl(action string) {
-	if o.Annotations == nil {
-		o.Annotations = make(map[string]string, 1)
-	}
-	o.Annotations[AccessControlAnnotation(action)] = "true"
-}
