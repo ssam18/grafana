@@ -99,18 +99,19 @@ func (r BenchmarkResult) String() string {
 }
 
 // BenchmarkResults aggregates results of a benchmark run for
-// create/update/delete/list operations.
+// create/update/read/delete/list operations.
 type BenchmarkResults struct {
 	CreateResults BenchmarkResult
 	UpdateResults BenchmarkResult
+	ReadResults   BenchmarkResult
 	DeleteResults BenchmarkResult
 	ListResults   BenchmarkResult
 }
 
 func (r BenchmarkResults) String() string {
 	return fmt.Sprintf(
-		"CREATE:\n%s\n\nUPDATE:\n%s\n\nDELETE:\n%s\n\nLIST:\n%s\n",
-		r.CreateResults, r.UpdateResults, r.DeleteResults, r.ListResults,
+		"CREATE:\n%s\n\nUPDATE:\n%s\n\nREAD:\n%s\n\nDELETE:\n%s\n\nLIST:\n%s\n",
+		r.CreateResults, r.UpdateResults, r.ReadResults, r.DeleteResults, r.ListResults,
 	)
 }
 
@@ -221,6 +222,33 @@ func runStorageBackendBenchmark(t *testing.T, backend resource.StorageBackend, o
 	})
 	t.Logf("UPDATE done: %v (%.1f req/s, p50=%v, p99=%v)", updateResult.TotalDuration, updateResult.Throughput, updateResult.P50Latency, updateResult.P99Latency)
 
+	// Compact before READ so reads hit compacted segments.
+	type compactable interface {
+		CompactAll(ctx context.Context) error
+	}
+	if c, ok := backend.(compactable); ok {
+		compactStart := time.Now()
+		require.NoError(t, c.CompactAll(t.Context()))
+		t.Logf("Pre-READ compaction done in %v", time.Since(compactStart))
+	}
+
+	t.Logf("READ phase: %d resources, %d workers...", opts.NumResources, opts.Concurrency)
+	readResult := performOperation(func(ctx context.Context, jobID int, namespace, group, resource, name string) error {
+		resp := backend.ReadResource(ctx, &resourcepb.ReadRequest{
+			Key: &resourcepb.ResourceKey{
+				Namespace: namespace,
+				Group:     group,
+				Resource:  resource,
+				Name:      name,
+			},
+		})
+		if resp.Error != nil {
+			return fmt.Errorf("read failed: %s", resp.Error.Message)
+		}
+		return nil
+	})
+	t.Logf("READ done: %v (%.1f req/s, p50=%v, p99=%v)", readResult.TotalDuration, readResult.Throughput, readResult.P50Latency, readResult.P99Latency)
+
 	t.Logf("DELETE phase: %d resources, %d workers...", opts.NumResources, opts.Concurrency)
 	deleteResult := performOperation(func(ctx context.Context, jobID int, namespace, group, resource, name string) error {
 		_, err := WriteEvent(ctx, backend, name, resourcepb.WatchEvent_DELETED,
@@ -236,6 +264,7 @@ func runStorageBackendBenchmark(t *testing.T, backend resource.StorageBackend, o
 	return &BenchmarkResults{
 		CreateResults: createResult,
 		UpdateResults: updateResult,
+		ReadResults:   readResult,
 		DeleteResults: deleteResult,
 	}
 }
@@ -281,6 +310,16 @@ func runListBenchmark(t *testing.T, backend resource.StorageBackend, opts *Bench
 	}
 	t.Logf("List benchmark: seeded %d resources x %d versions in %v",
 		opts.NumResources, opts.NumHistoryVersions+1, time.Since(seedStart))
+
+	// Trigger compaction if the backend supports it, so list measures against compacted segments.
+	type compactable interface {
+		CompactAll(ctx context.Context) error
+	}
+	if c, ok := backend.(compactable); ok {
+		compactStart := time.Now()
+		require.NoError(t, c.CompactAll(ctx))
+		t.Logf("List benchmark: compaction done in %v", time.Since(compactStart))
+	}
 
 	// --- Measure phase (concurrent List calls) ---
 	t.Logf("LIST phase: %d iterations, %d workers...", opts.NumListIterations, opts.Concurrency)

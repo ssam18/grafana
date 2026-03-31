@@ -3,6 +3,7 @@ package segment
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	segment_api "github.com/blevesearch/scorch_segment_api/v2"
 	zap "github.com/blevesearch/zapx/v17"
@@ -36,7 +37,10 @@ func NewSegmentReader(segment *Segment) (*SegmentReader, error) {
 		return nil, fmt.Errorf("close temp file: %w", err)
 	}
 
-	return &SegmentReader{path: path}, nil
+	r := &SegmentReader{path: path}
+	// Ensure temp file is cleaned up if the reader is garbage collected without Close.
+	runtime.SetFinalizer(r, func(r *SegmentReader) { r.Close() })
+	return r, nil
 }
 
 // Open memory-maps the segment file and validates its footer.

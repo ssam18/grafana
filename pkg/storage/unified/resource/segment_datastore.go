@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"iter"
@@ -12,14 +13,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/blevesearch/bleve/v2/analysis"
 	"github.com/blevesearch/bleve/v2/document"
+	"github.com/blevesearch/bleve/v2/index/scorch/mergeplan"
 	"github.com/blevesearch/bleve/v2/registry"
 	index "github.com/blevesearch/bleve_index_api"
+	"github.com/RoaringBitmap/roaring/v2"
 	segment_api "github.com/blevesearch/scorch_segment_api/v2"
 	"github.com/blevesearch/vellum"
-
 	kvpkg "github.com/grafana/grafana/pkg/storage/unified/resource/kv"
 	"github.com/grafana/grafana/pkg/storage/unified/resource/segment"
 	"github.com/grafana/grafana/pkg/storage/unified/sql/db"
@@ -43,7 +46,36 @@ var errTombstone = fmt.Errorf("tombstone")
 type segmentDataStore struct {
 	kv      KV // KV store for segments + manifest
 	builder *segment.SegmentBuilder
+
+	// cache holds opened *segment.SegmentReader keyed by segment KV key.
+	// Segments are immutable — cached readers never go stale until invalidated.
+	// Readers have a runtime finalizer that cleans up temp files when GC'd.
+	cache sync.Map // segKey string -> *segment.SegmentReader
+
+	// compactMu holds per-group/resource mutexes to serialize compaction.
+	compactMu sync.Map // "group/resource" -> *sync.Mutex
+
+	// compactPending tracks whether a compaction is needed after the current one finishes.
+	// When a Save triggers compaction but one is already running, this flag ensures
+	// the running compaction loops again to pick up new segments.
+	compactPending sync.Map // "group/resource" -> *atomic.Bool
+
+	// mergePlanOpts configures the tiered merge planner.
+	mergePlanOpts mergeplan.MergePlanOptions
 }
+
+// planSegment adapts manifest metadata to the mergeplan.Segment interface.
+type planSegment struct {
+	manifestKey string
+	rv          uint64
+	size        int64
+}
+
+func (s *planSegment) Id() uint64      { return s.rv }
+func (s *planSegment) FullSize() int64 { return s.size }
+func (s *planSegment) LiveSize() int64 { return s.size }
+func (s *planSegment) HasVector() bool { return false }
+func (s *planSegment) FileSize() int64 { return s.size }
 
 var (
 	keywordAnalyzerOnce sync.Once
@@ -67,7 +99,18 @@ func newSegmentDataStore(kv KV) *segmentDataStore {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create segment builder: %v", err))
 	}
-	return &segmentDataStore{kv: kv, builder: builder}
+	return &segmentDataStore{
+		kv:      kv,
+		builder: builder,
+		mergePlanOpts: mergeplan.MergePlanOptions{
+			MaxSegmentsPerTier:   10,
+			MaxSegmentSize:       50 * 1024 * 1024, // 50 MB
+			TierGrowth:           10.0,
+			SegmentsPerMergeTask: 10,
+			FloorSegmentSize:     4096, // our 1-doc segments are ~1-2 KB
+			ReclaimDeletesWeight: 2.0,
+		},
+	}
 }
 
 // segmentDocID returns the document _id for a DataKey.
@@ -93,6 +136,26 @@ func segmentKVKey(key DataKey) string {
 // where a merged segment replaces multiple source segments with a single manifest entry.
 func manifestKVKey(key DataKey) string {
 	return fmt.Sprintf("%s/%s/%d", key.Group, key.Resource, key.ResourceVersion)
+}
+
+// encodeManifestValue packs schema version and segment byte size into 12 bytes.
+func encodeManifestValue(schemaVersion uint32, segmentSize int64) []byte {
+	buf := make([]byte, 12)
+	binary.BigEndian.PutUint32(buf[0:4], schemaVersion)
+	binary.BigEndian.PutUint64(buf[4:12], uint64(segmentSize))
+	return buf
+}
+
+// decodeManifestValue unpacks schema version and segment byte size.
+// Returns defaults for legacy entries that only stored a 1-byte placeholder.
+func decodeManifestValue(data []byte) (schemaVersion uint32, segmentSize int64) {
+	if len(data) >= 12 {
+		schemaVersion = binary.BigEndian.Uint32(data[0:4])
+		segmentSize = int64(binary.BigEndian.Uint64(data[4:12]))
+		return
+	}
+	// Legacy 1-byte entries: treat as schema v1 with unknown (floor) size.
+	return 1, 0
 }
 
 // buildSegmentDoc builds a bleve document from a DataKey and value bytes.
@@ -121,6 +184,9 @@ func buildSegmentDoc(key DataKey, value []byte) *document.Document {
 	}
 	// _source — stored only (full resource bytes)
 	doc.AddField(document.NewTextFieldWithIndexingOptions("_source", nil, value, index.StoreField))
+	// _latest — indexed keyword. Set on every new doc; compaction corrects it so only the
+	// highest-RV non-deleted version per _id retains it. Enables O(live_resources) List.
+	doc.AddField(document.NewTextFieldCustom("_latest", nil, []byte("1"), index.IndexField, kw))
 
 	return doc
 }
@@ -140,8 +206,8 @@ func buildTombstoneDoc(key DataKey) *document.Document {
 	doc.AddField(document.NewNumericFieldWithIndexingOptions("resource_version", nil, float64(key.ResourceVersion), index.IndexField))
 	doc.AddField(document.NewTextFieldWithIndexingOptions("_rv", nil, []byte(strconv.FormatInt(key.ResourceVersion, 10)), index.StoreField))
 	doc.AddField(document.NewTextFieldCustom("action", nil, []byte(string(key.Action)), index.IndexField|index.StoreField, kw))
-	// _tombstone marker — presence alone signals this doc is a tombstone.
-	doc.AddField(document.NewTextFieldWithIndexingOptions("_tombstone", nil, []byte("1"), index.StoreField))
+	// _tombstone marker — indexed so Reconcile can use dictionary lookup, stored so readers can detect it.
+	doc.AddField(document.NewTextFieldCustom("_tombstone", nil, []byte("1"), index.IndexField|index.StoreField, kw))
 
 	return doc
 }
@@ -164,14 +230,20 @@ func (s *segmentDataStore) Save(ctx context.Context, key DataKey, value io.Reade
 	}
 
 	// Write .zap to KV (base64-encoded — the SQL KV's value column is longtext, not blob).
-	if err := s.writeKV(ctx, segmentsSection, segmentKVKey(key), seg.Data); err != nil {
+	segKey := segmentKVKey(key)
+	if err := s.writeKV(ctx, segmentsSection, segKey, seg.Data); err != nil {
 		return fmt.Errorf("failed to save segment: %w", err)
 	}
 
-	// Write manifest entry. The key carries all the metadata; value is a placeholder.
-	if err := s.writeKV(ctx, manifestSection, manifestKVKey(key), []byte{1}); err != nil {
+	// Invalidate stale cache entry so reads see the new data.
+	s.cache.Delete(segKey)
+
+	// Write manifest entry with schema version and segment size.
+	if err := s.writeKV(ctx, manifestSection, manifestKVKey(key), encodeManifestValue(1, int64(len(seg.Data)))); err != nil {
 		return fmt.Errorf("failed to save manifest entry: %w", err)
 	}
+
+	// Compaction is triggered explicitly via CompactAll, not on every write.
 
 	return nil
 }
@@ -189,9 +261,14 @@ func (s *segmentDataStore) writeKV(ctx context.Context, section, key string, dat
 	return w.Close()
 }
 
-// openSegment reads a segment from the KV store and returns an opened reader.
-// Caller must close the returned reader.
+// openSegment returns a cached segment reader, or loads one from KV on cache miss.
+// Returned readers are shared — callers must NOT close them. The runtime finalizer
+// on SegmentReader handles cleanup when the reader is evicted from cache and GC'd.
 func (s *segmentDataStore) openSegment(ctx context.Context, segKey string) (*segment.SegmentReader, error) {
+	if cached, ok := s.cache.Load(segKey); ok {
+		return cached.(*segment.SegmentReader), nil
+	}
+
 	zapReader, err := s.kv.Get(ctx, segmentsSection, segKey)
 	if err != nil {
 		return nil, err
@@ -209,7 +286,9 @@ func (s *segmentDataStore) openSegment(ctx context.Context, segKey string) (*seg
 	if err := reader.Open(); err != nil {
 		return nil, fmt.Errorf("failed to open segment: %w", err)
 	}
-	return reader, nil
+
+	actual, _ := s.cache.LoadOrStore(segKey, reader)
+	return actual.(*segment.SegmentReader), nil
 }
 
 // collectVersions returns all DataKeys for a given _id term across multiple segments.
@@ -332,7 +411,6 @@ func (s *segmentDataStore) Get(ctx context.Context, key DataKey) (io.ReadCloser,
 		}
 
 		source, found, err := s.findDocInSegment(reader, targetDocID, key.ResourceVersion)
-		reader.Close()
 		if err != nil {
 			return nil, err
 		}
@@ -353,6 +431,7 @@ func (s *segmentDataStore) findDocInSegment(reader *segment.SegmentReader, targe
 		return nil, false, fmt.Errorf("failed to get _id dictionary: %w", err)
 	}
 
+	// what's this??
 	postings, err := dict.PostingsList([]byte(targetDocID), nil, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to get postings for %s: %w", targetDocID, err)
@@ -413,9 +492,13 @@ func (s *segmentDataStore) Delete(ctx context.Context, key DataKey) error {
 	}
 
 	// Write .zap — overwrites the original segment at this RV.
-	if err := s.writeKV(ctx, segmentsSection, segmentKVKey(key), seg.Data); err != nil {
+	segKey := segmentKVKey(key)
+	if err := s.writeKV(ctx, segmentsSection, segKey, seg.Data); err != nil {
 		return fmt.Errorf("failed to save tombstone segment: %w", err)
 	}
+
+	// Invalidate cached reader so reads see the tombstone, not old data.
+	s.cache.Delete(segKey)
 
 	return nil
 }
@@ -460,12 +543,6 @@ func (s *segmentDataStore) Keys(ctx context.Context, key ListRequestKey, sort So
 			yield(DataKey{}, err)
 			return
 		}
-		defer func() {
-			for _, r := range readers {
-				r.Close()
-			}
-		}()
-
 		if key.Name != "" {
 			// Exact _id lookup — no merge-sort needed, small result set.
 			s.keysExactName(readers, key, sort, yield)
@@ -486,18 +563,12 @@ func (s *segmentDataStore) openGroupResourceSegments(ctx context.Context, group,
 		EndKey:   PrefixRangeEnd(prefix),
 	}) {
 		if err != nil {
-			for _, r := range readers {
-				r.Close()
-			}
 			return nil, err
 		}
 
 		segKey := manifestKey + ".zap"
 		reader, err := s.openSegment(ctx, segKey)
 		if err != nil {
-			for _, r := range readers {
-				r.Close()
-			}
 			return nil, fmt.Errorf("failed to open segment %s: %w", segKey, err)
 		}
 		readers = append(readers, reader)
@@ -675,12 +746,6 @@ func (s *segmentDataStore) GetLatestAndPredecessor(ctx context.Context, key List
 	if err != nil {
 		return DataKey{}, DataKey{}, err
 	}
-	defer func() {
-		for _, r := range readers {
-			r.Close()
-		}
-	}()
-
 	targetDocID := segmentDocID(DataKey{
 		Group: key.Group, Resource: key.Resource,
 		Namespace: key.Namespace, Name: key.Name,
@@ -721,12 +786,6 @@ func (s *segmentDataStore) GetResourceKeyAtRevision(ctx context.Context, key Get
 	if err != nil {
 		return DataKey{}, err
 	}
-	defer func() {
-		for _, r := range readers {
-			r.Close()
-		}
-	}()
-
 	targetDocID := segmentDocID(DataKey{
 		Group: key.Group, Resource: key.Resource,
 		Namespace: key.Namespace, Name: key.Name,
@@ -784,6 +843,246 @@ func (s *segmentDataStore) ListResourceKeysAtRevision(ctx context.Context, optio
 		}
 	}
 
+	// Fast path: when listing latest (rv=MaxInt64), use _latest index.
+	// Across compacted segments, only the latest non-deleted version per _id has _latest=true.
+	// For uncompacted segments, multiple versions may have _latest=true — we still dedup
+	// by _id, keeping the highest RV.
+	if rv == math.MaxInt64 {
+		return s.listLatest(ctx, listKey, options.ContinueName, options.ContinueNamespace)
+	}
+
+	// Slow path: version-at-rv — scan all versions.
+	return s.listAtRevision(ctx, listKey, rv)
+}
+
+// listLatest uses the _latest postings as a filter while streaming the _id dictionary.
+// After compaction, docs are sorted by _id in the segment, so we iterate in order
+// without collecting into a map. For uncompacted segments with duplicate _latest entries,
+// we fall back to dedup by _id.
+func (s *segmentDataStore) listLatest(ctx context.Context, key ListRequestKey, continueName, continueNamespace string) iter.Seq2[DataKey, error] {
+	return func(yield func(DataKey, error) bool) {
+		readers, err := s.openGroupResourceSegments(ctx, key.Group, key.Resource)
+		if err != nil {
+			yield(DataKey{}, err)
+			return
+		}
+
+		// Single-segment fast path: after compaction, there's typically one segment
+		// with _latest set correctly (one per _id). Stream directly from _id dictionary
+		// using _latest postings as a bitmap filter — no map, no sort.
+		if len(readers) == 1 {
+			s.listLatestSingleSegment(readers[0], key, continueName, continueNamespace, yield)
+			return
+		}
+
+		// Multi-segment path: collect into map, dedup, sort.
+		s.listLatestMultiSegment(readers, key, continueName, continueNamespace, yield)
+	}
+}
+
+// listLatestSingleSegment streams results from one segment by walking the _id dictionary
+// and checking each _id's postings against the _latest bitmap.
+func (s *segmentDataStore) listLatestSingleSegment(
+	reader *segment.SegmentReader,
+	key ListRequestKey,
+	continueName, continueNamespace string,
+	yield func(DataKey, error) bool,
+) {
+	// Build a roaring bitmap of doc numbers with _latest=true for O(1) membership check.
+	latestDict, err := reader.Dictionary("_latest")
+	if err != nil || latestDict == nil {
+		return // no _latest field — segment not compacted, return empty
+	}
+	latestPostings, err := latestDict.PostingsList([]byte("1"), nil, nil)
+	if err != nil || latestPostings == nil {
+		return
+	}
+	latestBitmap := roaring.New()
+	lpIter := latestPostings.Iterator(false, false, false, nil)
+	for {
+		p, err := lpIter.Next()
+		if err != nil {
+			yield(DataKey{}, fmt.Errorf("build _latest bitmap: %w", err))
+			return
+		}
+		if p == nil {
+			break
+		}
+		latestBitmap.Add(uint32(p.Number()))
+	}
+
+	// Build _id range for namespace filtering.
+	var startKey, endKey string
+	if key.Namespace != "" {
+		startKey = fmt.Sprintf("%s/%s/%s/", key.Group, key.Resource, key.Namespace)
+	} else {
+		startKey = fmt.Sprintf("%s/%s/", key.Group, key.Resource)
+	}
+	endKey = PrefixRangeEnd(startKey)
+
+	// Apply continue cursor.
+	if continueName != "" {
+		ns := key.Namespace
+		if ns == "" && continueNamespace != "" {
+			ns = continueNamespace
+		}
+		cursorID := segmentDocID(DataKey{
+			Group: key.Group, Resource: key.Resource,
+			Namespace: ns, Name: continueName,
+		})
+		// Start just past the cursor. Since dictionary is sorted, we use cursorID+"\x00".
+		if cursorID+"\x00" > startKey {
+			startKey = cursorID + "\x00"
+		}
+	}
+
+	// Iterate _id dictionary in sorted order.
+	idDict, err := reader.Dictionary("_id")
+	if err != nil || idDict == nil {
+		return
+	}
+
+	iter := idDict.AutomatonIterator(&vellum.AlwaysMatch{}, []byte(startKey), []byte(endKey))
+	for {
+		entry, err := iter.Next()
+		if err != nil {
+			yield(DataKey{}, fmt.Errorf("iterate _id dictionary: %w", err))
+			return
+		}
+		if entry == nil {
+			break
+		}
+
+		// For this _id, find a posting that's in the _latest bitmap.
+		idPostings, err := idDict.PostingsList([]byte(entry.Term), nil, nil)
+		if err != nil {
+			yield(DataKey{}, fmt.Errorf("get postings for %s: %w", entry.Term, err))
+			return
+		}
+
+		pIter := idPostings.Iterator(false, false, false, nil)
+		for {
+			posting, err := pIter.Next()
+			if err != nil {
+				yield(DataKey{}, fmt.Errorf("iterate postings: %w", err))
+				return
+			}
+			if posting == nil {
+				break
+			}
+
+			if !latestBitmap.Contains(uint32(posting.Number())) {
+				continue
+			}
+
+			dk, err := dataKeyFromSegment(reader, posting.Number())
+			if err == errTombstone {
+				continue
+			}
+			if err != nil {
+				yield(DataKey{}, err)
+				return
+			}
+			if dk.Action == DataActionDeleted {
+				continue
+			}
+			if !yield(dk, nil) {
+				return
+			}
+			break // found the latest for this _id, move to next
+		}
+	}
+}
+
+// listLatestMultiSegment collects _latest docs from multiple segments, deduplicates, and sorts.
+func (s *segmentDataStore) listLatestMultiSegment(
+	readers []*segment.SegmentReader,
+	key ListRequestKey,
+	continueName, continueNamespace string,
+	yield func(DataKey, error) bool,
+) {
+	var idPrefix string
+	if key.Namespace != "" {
+		idPrefix = fmt.Sprintf("%s/%s/%s/", key.Group, key.Resource, key.Namespace)
+	} else {
+		idPrefix = fmt.Sprintf("%s/%s/", key.Group, key.Resource)
+	}
+
+	latestByID := make(map[string]DataKey)
+	for _, reader := range readers {
+		dict, err := reader.Dictionary("_latest")
+		if err != nil || dict == nil {
+			continue
+		}
+		postings, err := dict.PostingsList([]byte("1"), nil, nil)
+		if err != nil || postings == nil {
+			continue
+		}
+
+		pIter := postings.Iterator(false, false, false, nil)
+		for {
+			posting, err := pIter.Next()
+			if err != nil {
+				yield(DataKey{}, fmt.Errorf("iterate _latest postings: %w", err))
+				return
+			}
+			if posting == nil {
+				break
+			}
+
+			dk, err := dataKeyFromSegment(reader, posting.Number())
+			if err == errTombstone {
+				continue
+			}
+			if err != nil {
+				yield(DataKey{}, err)
+				return
+			}
+
+			docID := segmentDocID(dk)
+			if !strings.HasPrefix(docID, idPrefix) {
+				continue
+			}
+			if existing, ok := latestByID[docID]; !ok || dk.ResourceVersion > existing.ResourceVersion {
+				latestByID[docID] = dk
+			}
+		}
+	}
+
+	ids := make([]string, 0, len(latestByID))
+	for id := range latestByID {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	var cursorID string
+	if continueName != "" {
+		ns := key.Namespace
+		if ns == "" && continueNamespace != "" {
+			ns = continueNamespace
+		}
+		cursorID = segmentDocID(DataKey{
+			Group: key.Group, Resource: key.Resource,
+			Namespace: ns, Name: continueName,
+		})
+	}
+
+	for _, id := range ids {
+		if cursorID != "" && id <= cursorID {
+			continue
+		}
+		dk := latestByID[id]
+		if dk.Action == DataActionDeleted {
+			continue
+		}
+		if !yield(dk, nil) {
+			return
+		}
+	}
+}
+
+// listAtRevision is the original slow path: scan all versions via Keys and dedup.
+func (s *segmentDataStore) listAtRevision(ctx context.Context, listKey ListRequestKey, rv int64) iter.Seq2[DataKey, error] {
 	return func(yield func(DataKey, error) bool) {
 		var candidateKey *DataKey
 
@@ -858,18 +1157,11 @@ func (s *segmentDataStore) BatchGet(ctx context.Context, keys []DataKey) iter.Se
 						Key:   key,
 						Value: io.NopCloser(bytes.NewReader(source)),
 					}, nil) {
-						for _, r := range readers {
-							r.Close()
-						}
-						return
+							return
 					}
 				}
 			}
-
-			for _, r := range readers {
-				r.Close()
 			}
-		}
 	}
 }
 
@@ -1018,6 +1310,218 @@ func (s *segmentDataStore) GetGroupResources(ctx context.Context) ([]GroupResour
 		}
 	}
 	return results, nil
+}
+
+// grMutex returns a per-group/resource mutex for serializing compaction.
+func (s *segmentDataStore) grMutex(group, resource string) *sync.Mutex {
+	key := group + "/" + resource
+	mu, _ := s.compactMu.LoadOrStore(key, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
+// CompactAll compacts all group/resources that have segments. Blocks until done.
+func (s *segmentDataStore) CompactAll(ctx context.Context) error {
+	grs, err := s.GetGroupResources(ctx)
+	if err != nil {
+		return err
+	}
+	for _, gr := range grs {
+		if err := s.Compact(ctx, gr.Group, gr.Resource); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Compact runs tiered merge planning for a group/resource and loops until
+// the planner has no more work. Blocks until compaction is complete.
+func (s *segmentDataStore) Compact(ctx context.Context, group, resource string) error {
+	for {
+		merged, err := s.compactOnce(ctx, group, resource)
+		if err != nil {
+			return err
+		}
+		if !merged {
+			return nil
+		}
+	}
+}
+
+// maybeCompact is the background-triggered version of Compact with TryLock guard.
+func (s *segmentDataStore) maybeCompact(ctx context.Context, group, resource string) error {
+	mu := s.grMutex(group, resource)
+	if !mu.TryLock() {
+		return nil // compaction already running for this group/resource
+	}
+	defer mu.Unlock()
+
+	grKey := group + "/" + resource
+	pendingVal, _ := s.compactPending.LoadOrStore(grKey, &atomic.Bool{})
+	pending := pendingVal.(*atomic.Bool)
+
+	for {
+		// Clear the pending flag before compacting. Any writes that arrive during
+		// compaction will set it again, causing us to loop.
+		pending.Store(false)
+
+		merged, err := s.compactOnce(ctx, group, resource)
+		if err != nil {
+			return err
+		}
+
+		// If nothing was merged and no new writes arrived, we're done.
+		if !merged && !pending.Load() {
+			return nil
+		}
+	}
+}
+
+// compactOnce runs one round of merge planning and executes all resulting tasks.
+// Returns true if any segments were merged (caller should loop).
+func (s *segmentDataStore) compactOnce(ctx context.Context, group, resource string) (bool, error) {
+	prefix := fmt.Sprintf("%s/%s/", group, resource)
+	var segments []mergeplan.Segment
+	segByKey := make(map[string]*planSegment)
+
+	for manifestKey, err := range s.kv.Keys(ctx, manifestSection, ListOptions{
+		StartKey: prefix,
+		EndKey:   PrefixRangeEnd(prefix),
+	}) {
+		if err != nil {
+			return false, fmt.Errorf("list manifest for compaction: %w", err)
+		}
+
+		parts := strings.Split(manifestKey, "/")
+		if len(parts) < 3 {
+			continue
+		}
+		rv, err := strconv.ParseUint(parts[len(parts)-1], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		valReader, err := s.kv.Get(ctx, manifestSection, manifestKey)
+		if err != nil {
+			continue
+		}
+		valData, err := io.ReadAll(valReader)
+		_ = valReader.Close()
+		if err != nil {
+			continue
+		}
+		_, segSize := decodeManifestValue(valData)
+		if segSize <= 0 {
+			segSize = s.mergePlanOpts.FloorSegmentSize
+		}
+
+		ps := &planSegment{manifestKey: manifestKey, rv: rv, size: segSize}
+		segments = append(segments, ps)
+		segByKey[manifestKey] = ps
+	}
+
+	if len(segments) <= 1 {
+		return false, nil
+	}
+
+	plan, err := mergeplan.Plan(segments, &s.mergePlanOpts)
+	if err != nil {
+		return false, fmt.Errorf("merge plan: %w", err)
+	}
+	if plan == nil || len(plan.Tasks) == 0 {
+		return false, nil
+	}
+
+	merged := false
+	for _, task := range plan.Tasks {
+		if len(task.Segments) < 2 {
+			continue
+		}
+		if err := s.executeCompaction(ctx, task.Segments, segByKey); err != nil {
+			return false, fmt.Errorf("compaction task: %w", err)
+		}
+		merged = true
+	}
+
+	return merged, nil
+}
+
+// executeCompaction merges the segments in a single merge task.
+func (s *segmentDataStore) executeCompaction(ctx context.Context, toMerge []mergeplan.Segment, segByKey map[string]*planSegment) error {
+	// Open all source segment readers.
+	readers := make([]*segment.SegmentReader, 0, len(toMerge))
+	manifestKeys := make([]string, 0, len(toMerge))
+	segmentKeys := make([]string, 0, len(toMerge))
+	var highestRV uint64
+
+	for _, seg := range toMerge {
+		ps := segByKey[seg.(*planSegment).manifestKey]
+		segKey := ps.manifestKey + ".zap"
+
+		reader, err := s.openSegment(ctx, segKey)
+		if err != nil {
+			return fmt.Errorf("open segment %s for compaction: %w", segKey, err)
+		}
+		readers = append(readers, reader)
+		manifestKeys = append(manifestKeys, ps.manifestKey)
+		segmentKeys = append(segmentKeys, segKey)
+		if ps.rv > highestRV {
+			highestRV = ps.rv
+		}
+	}
+
+	// Rebuild segment with correct _latest flags.
+	mergedSeg, err := segment.RebuildWithLatest(ctx, s.builder, readers, highestRV)
+	if err != nil {
+		return fmt.Errorf("rebuild: %w", err)
+	}
+	if mergedSeg == nil {
+		// All docs were tombstones.
+		return s.deleteCompactedSegments(ctx, manifestKeys, segmentKeys)
+	}
+
+	// Write merged segment to KV under the highest RV key.
+	mergedSegKey := fmt.Sprintf("%s/%s/%d.zap", strings.Split(manifestKeys[0], "/")[0], strings.Split(manifestKeys[0], "/")[1], highestRV)
+	mergedManifestKey := fmt.Sprintf("%s/%s/%d", strings.Split(manifestKeys[0], "/")[0], strings.Split(manifestKeys[0], "/")[1], highestRV)
+
+	if err := s.writeKV(ctx, segmentsSection, mergedSegKey, mergedSeg.Data); err != nil {
+		return fmt.Errorf("write merged segment: %w", err)
+	}
+	if err := s.writeKV(ctx, manifestSection, mergedManifestKey, encodeManifestValue(1, int64(len(mergedSeg.Data)))); err != nil {
+		return fmt.Errorf("write merged manifest: %w", err)
+	}
+
+	// Invalidate cached readers for the merged key so next read picks up the new data.
+	s.cache.Delete(mergedSegKey)
+
+	// Delete old segments (excluding the one we just overwrote if highestRV was a source).
+	var oldManifestKeys []string
+	var oldSegmentKeys []string
+	for i, mk := range manifestKeys {
+		if mk == mergedManifestKey {
+			continue // already overwritten
+		}
+		oldManifestKeys = append(oldManifestKeys, mk)
+		oldSegmentKeys = append(oldSegmentKeys, segmentKeys[i])
+	}
+
+	return s.deleteCompactedSegments(ctx, oldManifestKeys, oldSegmentKeys)
+}
+
+// deleteCompactedSegments removes old manifest and segment entries after compaction.
+func (s *segmentDataStore) deleteCompactedSegments(ctx context.Context, manifestKeys, segmentKeys []string) error {
+	for _, mk := range manifestKeys {
+		if err := s.kv.Delete(ctx, manifestSection, mk); err != nil {
+			return fmt.Errorf("delete manifest %s: %w", mk, err)
+		}
+	}
+	for _, sk := range segmentKeys {
+		if err := s.kv.Delete(ctx, segmentsSection, sk); err != nil {
+			return fmt.Errorf("delete segment %s: %w", sk, err)
+		}
+		// Don't cache.Remove here — concurrent readers may still hold the reader.
+		// Old entries age out via LRU naturally.
+	}
+	return nil
 }
 
 func (s *segmentDataStore) ApplyBackwardsCompatibleChanges(_ context.Context, _ db.Tx, _ WriteEvent, _ DataKey) error {

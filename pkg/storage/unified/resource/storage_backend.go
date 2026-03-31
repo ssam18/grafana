@@ -1772,6 +1772,15 @@ func (k *kvStorageBackend) GetResourceLastImportTimes(ctx context.Context) iter.
 	}
 }
 
+// CompactAll triggers compaction on the segment datastore if enabled.
+// No-op if the backend is not using the segment datastore.
+func (k *kvStorageBackend) CompactAll(ctx context.Context) error {
+	if sds, ok := k.dataStore.(*segmentDataStore); ok {
+		return sds.CompactAll(ctx)
+	}
+	return nil
+}
+
 //nolint:gocyclo
 func (b *kvStorageBackend) ProcessBulk(ctx context.Context, setting BulkSettings, iter BulkRequestIterator) *resourcepb.BulkResponse {
 	// TODO cross-node lock
