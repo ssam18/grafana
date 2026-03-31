@@ -5,6 +5,7 @@ import { type GrafanaTheme2, type SelectableValue } from '@grafana/data';
 import { t } from '@grafana/i18n';
 import { Icon, MultiSelect, Tooltip, useStyles2 } from '@grafana/ui';
 import { useSearchTeamsQuery } from 'app/api/clients/legacy';
+import { extractErrorMessage } from 'app/api/utils';
 import { teamOwnerRef } from 'app/features/browse-dashboards/utils/dashboards';
 
 const ALL_TEAMS_VALUE = '__all-teams__';
@@ -24,12 +25,11 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
   // At this point we have hard limit for number of items we show. The issue is we are using MultiSelect because of
   // some UX bug (it opens only when clicking on internal input, not the full element) in Combobox but Multiselect
   // then does not allow for async options loading.
-  const { data, isLoading } = useSearchTeamsQuery({ perpage: TEAM_OPTIONS_LIMIT, sort: 'name-asc' });
+  const { data, error, isLoading } = useSearchTeamsQuery({ perpage: TEAM_OPTIONS_LIMIT, sort: 'name-asc' });
 
   // In this case we show a warning tooltip and don't show the allTeamsValue as we cannot really select *all* the teams
   // if we cannot load them.
   const hasMoreTeamsThanLimit = (data?.totalCount ?? 0) > TEAM_OPTIONS_LIMIT;
-
   const teamOptions = useMemo<Array<SelectableValue<string>>>(() => {
     if (!data?.teams) {
       return [];
@@ -101,7 +101,15 @@ export function OwnersFilter({ values, onChange }: OwnersFilterProps) {
         loadingMessage={t('browse-dashboards.filters.owner-loading', 'Loading teams...')}
         placeholder={t('browse-dashboards.filters.owner-placeholder', 'Filter by owner')}
         isLoading={isLoading}
-        prefix={hasMoreTeamsThanLimit ? <TruncatedListTooltip totalCount={data?.totalCount} /> : <Icon name="filter" />}
+        prefix={
+          error ? (
+            <LoadErrorTooltip error={error} />
+          ) : hasMoreTeamsThanLimit ? (
+            <TruncatedListTooltip totalCount={data?.totalCount} />
+          ) : (
+            <Icon name="filter" />
+          )
+        }
       />
     </div>
   );
@@ -128,6 +136,26 @@ function TruncatedListTooltip({ totalCount }: { totalCount: number | undefined }
   );
 }
 
+function LoadErrorTooltip({ error }: { error: unknown }) {
+  const styles = useStyles2(getStyles);
+
+  const errorMessage = extractErrorMessage(
+    error,
+    t('browse-dashboards.filters.owner-load-error', 'Failed to load teams')
+  );
+
+  return (
+    <Tooltip content={errorMessage} placement="top">
+      <span
+        aria-label={t('browse-dashboards.filters.owner-load-error-icon', 'Owner filter load error')}
+        className={styles.errorIcon}
+      >
+        <Icon name="exclamation-circle" size="sm" />
+      </span>
+    </Tooltip>
+  );
+}
+
 const getStyles = (theme: GrafanaTheme2) => ({
   ownerFilter: css({
     display: 'flex',
@@ -140,6 +168,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     display: 'inline-flex',
     alignItems: 'center',
     color: theme.colors.warning.text,
+    cursor: 'help',
+  }),
+  errorIcon: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: theme.colors.error.text,
     cursor: 'help',
   }),
 });

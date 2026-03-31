@@ -2,7 +2,7 @@ import { comboboxTestSetup } from 'test/helpers/comboboxTestSetup';
 import { render, screen } from 'test/test-utils';
 
 import { setBackendSrv } from '@grafana/runtime';
-import { getSearchTeamsHandler } from '@grafana/test-utils/handlers';
+import { getSearchTeamsErrorHandler, getSearchTeamsHandler } from '@grafana/test-utils/handlers';
 import server, { setupMockServer } from '@grafana/test-utils/server';
 import { backendSrv } from 'app/core/services/backend_srv';
 
@@ -74,5 +74,15 @@ describe('OwnersFilter', () => {
     await user.hover(await screen.findByLabelText('Owner filter limit warning'));
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Listing only first 200 teams out of 201.');
+  });
+
+  it('shows an error tooltip when loading teams fails', async () => {
+    server.use(getSearchTeamsErrorHandler('Team API unavailable'));
+
+    const { user } = render(<OwnersFilter values={[]} onChange={jest.fn()} />);
+
+    await user.hover(await screen.findByLabelText('Owner filter load error'));
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Team API unavailable');
   });
 });
