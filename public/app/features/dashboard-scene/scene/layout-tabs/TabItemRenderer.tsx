@@ -26,7 +26,7 @@ export function TabItemRenderer({ model }: SceneComponentProps<TabItem>) {
 
   const { isSelected, onSelect, isSelectable } = useElementSelection(key);
   const { isSelected: isSourceSelected } = useElementSelection(repeatSourceKey);
-  const { isEditing } = useDashboardState(model);
+  const { isEditing, editable } = useDashboardState(model);
   const mySlug = model.getSlug();
   const urlKey = parentLayout.getUrlKey();
   const isActive = mySlug === currentTabSlug;
@@ -39,7 +39,7 @@ export function TabItemRenderer({ model }: SceneComponentProps<TabItem>) {
   const isClone = isRepeatCloneOrChildOf(model);
   const soloPanelContext = useSoloPanelContext();
 
-  const isDraggable = !isClone && isEditing;
+  const isDraggable = !isClone && isEditing && !!editable;
 
   if (isConditionallyHidden && !isEditing && !isActive) {
     return null;

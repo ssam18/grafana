@@ -32,7 +32,7 @@ export function RowItemRenderer({ model }: SceneComponentProps<RowItem>) {
   } = model.useState();
   const isCollapsed = collapse && !isHeaderHidden; // never allow a row without a header to be collapsed
   const isClone = isRepeatCloneOrChildOf(model);
-  const { isEditing } = useDashboardState(model);
+  const { isEditing, editable } = useDashboardState(model);
   const [isConditionallyHidden, conditionalRenderingClass, conditionalRenderingOverlay] = useIsConditionallyHidden(
     model.state.conditionalRendering
   );
@@ -58,7 +58,7 @@ export function RowItemRenderer({ model }: SceneComponentProps<RowItem>) {
   const onHeaderEnter = useCallback(() => setSelectableHighlight(true), []);
   const onHeaderLeave = useCallback(() => setSelectableHighlight(false), []);
 
-  const isDraggable = !isClone && isEditing;
+  const isDraggable = !isClone && isEditing && !!editable;
 
   if (isHidden) {
     return null;

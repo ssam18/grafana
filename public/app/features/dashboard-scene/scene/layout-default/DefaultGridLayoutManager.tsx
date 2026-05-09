@@ -128,6 +128,9 @@ export class DefaultGridLayoutManager
   }
 
   private _activationHandler() {
+    const isEditing = getDashboardSceneFor(this).state.isEditing ?? false;
+    this.state.grid.setState({ isDraggable: isEditing, isResizable: isEditing });
+
     if (config.featureToggles.dashboardNewLayouts) {
       this._subs.add(
         this.subscribeToEvent(SceneGridLayoutDragStartEvent, ({ payload: { evt, panel } }) => {
